@@ -1,12 +1,3 @@
-'''
-Toolpath design for additive manufacturing using RL
-Mojtaba Mozaffar March 2020
-
-Significant parts of this code are adopted based on:
-    https://github.com/werner-duvaud/muzero-general
-    https://github.com/johan-gras/MuZero
-'''
-
 import os
 import time
 import datetime
