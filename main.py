@@ -1,11 +1,22 @@
+'''
+Toolpath design for additive manufacturing using RL
+Mojtaba Mozaffar March 2020
+
+Significant parts of this code are adopted based on:
+    https://github.com/werner-duvaud/muzero-general
+    https://github.com/johan-gras/MuZero
+'''
+
+import torch
+from torch.utils.tensorboard import SummaryWriter
+
 import os
 import time
 import datetime
 import numpy as np
 import torch
-from torch.utils.tensorboard import SummaryWriter
 
-from environment import create_am_env
+from environment import Game, Game_test
 from shared_storage import SharedStorage
 from replay_buffer import ReplayBuffer
 from self_play import SelfPlay
@@ -15,9 +26,8 @@ class MuZeroConfig(object):
     def __init__(self):
         self.description = 'am'
         self.observation_shape = (1, 32, 32)
-        self.action_space_size = 20
-        self.stacked_observations = 0
-        self.max_moves = 300
+        self.action_space_size = 4
+        self.max_moves = 100
         self.support_size_value = 8
         self.support_size_reward = 1
         self.num_simulations = 50
@@ -25,13 +35,11 @@ class MuZeroConfig(object):
         self.temperature_threshold = 60
         self.root_dirichlet_alpha = 0.25
         self.root_exploration_fraction = 0.25
-        self.pb_c_base = 19652
+        self.pb_c_base = 1000
         self.pb_c_init = 1.25
         self.blocks = 2
-        self.channels = 8
-        self.reduced_channels_reward = 8
-        self.reduced_channels_value = 8
-        self.reduced_channels_policy = 8 
+        self.channels = 8 
+        self.reduced_channels = 8 
         self.resnet_fc_reward_layers = []
         self.resnet_fc_value_layers = []
         self.resnet_fc_policy_layers = []  
@@ -39,7 +47,7 @@ class MuZeroConfig(object):
         self.n_training_loop = 100
         self.n_episodes = 20
         self.n_epochs = 400
-        self.eval_episodes = 1
+        self.eval_episodes = 6
         self.window_size = 1000
         self.batch_size = 512
         self.num_unroll_steps = 10
@@ -49,9 +57,8 @@ class MuZeroConfig(object):
         self.lr_decay_rate = 1.0
         self.lr_decay_steps = 1000
         self.seed = 0
-        self.use_last_model_value = False
         self.logdir='results/{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"),self.description)
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = "cpu"#"cuda" if torch.cuda.is_available() else "cpu"
         self.weight_decay = 1e-4
         self.visit_softmax_temperature_fn = lambda x: 1.0 if x<0.5*self.n_training_loop*self.n_epochs else (
                                                       0.5 if x<0.75*self.n_training_loop*self.n_epochs else 
@@ -63,8 +70,8 @@ torch.manual_seed(config.seed)
 
 os.makedirs(config.logdir, exist_ok=True)
 writer = SummaryWriter(config.logdir)
-
-env, _, env_test = create_am_env(max_steps = config.max_moves)
+env = Game(config)
+env_test = Game_test(config)
 storage = SharedStorage(config)
 replay_buffer = ReplayBuffer(config)
 trainer = Trainer(storage, replay_buffer, config)
@@ -81,7 +88,6 @@ for loop in range(config.n_training_loop):
 
     infos = storage.get_infos()
     writer.add_scalar("1.Reward/1.Total reward", infos["total_reward"], loop)
-    writer.add_scalar("1.Reward/2.Mean value", infos["mean_value"], loop)
     writer.add_scalar("2.Workers/1.Self played games",replay_buffer.get_self_play_count(),loop)
     writer.add_scalar("2.Workers/2.Training steps", infos["training_step"], loop)
     writer.add_scalar("2.Workers/3.Self played games per training step ratio", 
