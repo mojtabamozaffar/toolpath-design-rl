@@ -3,121 +3,124 @@ import torch
 import math
 from graphviz import Graph
 import matplotlib.pyplot as plt
+import ray
 
-class SelfPlay:
-    def __init__(self, shared_storage, replay_buffer, game, config, test_mode=False):
-        self.config = config
-        self.game = game
-        self.shared_storage = shared_storage
-        self.replay_buffer = replay_buffer
-        self.test_mode = test_mode
+# class SelfPlay:
+#     def __init__(self, shared_storage, replay_buffer, game, config, test_mode=False):
+#         self.config = config
+#         self.game = game
+#         self.shared_storage = shared_storage
+#         self.replay_buffer = replay_buffer
+#         self.test_mode = test_mode
 
-    def play(self, it):
-        total_rewards = []
-        model = self.shared_storage.current_network
-        model.eval()
-        for i in range(self.config.n_episodes if not self.test_mode else self.config.eval_episodes):
-            game_history = self.play_one_game(model)
-            if self.test_mode:
-                total_rewards.append(sum(game_history.reward_history))
-                fig = self.game.env.plot_toolpath()
-                fig.savefig(self.config.logdir + '/' + 'toolpath_' + str(it)+'_test_'+str(i)+'.png', dpi=300)
-                plt.close()
-            else:
-                self.replay_buffer.save_game(game_history)
-        if self.test_mode:
-            self.shared_storage.set_infos("total_reward", sum(total_rewards)/self.config.eval_episodes)
-        else:
-            fig = self.game.env.plot_toolpath()
-            fig.savefig(self.config.logdir + '/' + 'toolpath_' + str(it)+'_train'+'.png', dpi=300)
-            plt.close()
+#     def play(self, it):
+#         total_rewards = []
+#         model = self.shared_storage.current_network
+#         model.eval()
+#         for i in range(self.config.n_episodes if not self.test_mode else self.config.eval_episodes):
+#             game_history = self.play_one_game(model)
+#             if self.test_mode:
+#                 total_rewards.append(sum(game_history.reward_history))
+#                 fig = self.game.env.plot_toolpath()
+#                 fig.savefig(self.config.logdir + '/' + 'toolpath_' + str(it)+'_test_'+str(i)+'.png', dpi=300)
+#                 plt.close()
+#             else:
+#                 self.replay_buffer.save_game(game_history)
+#         if self.test_mode:
+#             self.shared_storage.set_infos("total_reward", sum(total_rewards)/self.config.eval_episodes)
+#         else:
+#             fig = self.game.env.plot_toolpath()
+#             fig.savefig(self.config.logdir + '/' + 'toolpath_' + str(it)+'_train'+'.png', dpi=300)
+#             plt.close()
 
-    def play_one_game(self, model):
+@ray.remote
+def play_one_game(model, env_func, config, temperature, section_id=None, loop=0, save=False, self_play_type = 'test'):
         game_history = GameHistory()
-        observation = self.game.reset()
+        #observation = self.game.reset()
         # observation = self.stack_previous_observations(observation, game_history, self.config.stacked_observations)
+        game = env_func(max_steps = config.max_moves, section_id=section_id)
+        observation = game.reset()
         game_history.action_history.append(0)
         game_history.observation_history.append(observation)
         game_history.reward_history.append(0)
-        game_history.to_play_history.append(self.game.to_play())
+        game_history.to_play_history.append(game.to_play())
 
         done = False
         
-        temperature = (0 if self.test_mode else 
-                       self.config.visit_softmax_temperature_fn(self.shared_storage.get_infos()["training_step"]))
+        #temperature = (0 if self.test_mode else 
+        #               self.config.visit_softmax_temperature_fn(self.shared_storage.get_infos()["training_step"]))
 
         with torch.no_grad():
-            while (not done and len(game_history.action_history) <= self.config.max_moves):
-                root = MCTS(self.config).run(model, observation, self.game.legal_actions(), 
-                    self.game.to_play(),
+            while (not done and len(game_history.action_history) <= config.max_moves):
+                root = MCTS(config).run(model, observation, game.actions, 
+                    game.to_play(),
                     False if temperature == 0 else True)
 
-                action = self.select_action(root, temperature)
+                #action = select_action(root, temperature)
                 
-                action = self.select_action(root, temperature 
-                        if len(game_history.action_history) < self.config.temperature_threshold else 0)
-                observation, reward, done = self.game.step(action)
+                action = select_action(root, temperature 
+                        if len(game_history.action_history) < config.temperature_threshold else 0)
+                observation, reward, done, _ = game.step(action)
 
                 # observation = self.stack_previous_observations(observation, game_history, self.config.stacked_observations,)
 
-                game_history.store_search_statistics(root, [i for i in range(self.config.action_space_size)])
+                game_history.store_search_statistics(root, [i for i in range(config.action_space_size)])
 
                 # Next batch
                 game_history.action_history.append(action)
                 game_history.observation_history.append(observation)
                 game_history.reward_history.append(reward)
-                game_history.to_play_history.append(self.game.to_play())
+                game_history.to_play_history.append(game.to_play())
 
-        self.game.close()
+        game.close()
         return game_history
 
-    @staticmethod
-    def stack_previous_observations(observation, game_history, num_stacked_observations):
-        stacked_observations = observation.copy()
-        for i in range(num_stacked_observations):
-            try:
-                previous_observation = numpy.concatenate(
-                    (
-                        game_history.observation_history[-i - 1][
-                            : observation.shape[0]
-                        ],
-                        [numpy.ones_like(observation[0])
-                        * game_history.action_history[-i - 1]],
-                    ), axis=0
-                )
-            except IndexError:
-                previous_observation = numpy.concatenate(
-                    (numpy.zeros_like(observation), [numpy.zeros_like(observation[0])]), axis=0
-                )
-            stacked_observations = numpy.concatenate(
-                (stacked_observations, previous_observation), axis=0
+def stack_previous_observations(observation, game_history, num_stacked_observations):
+    stacked_observations = observation.copy()
+    for i in range(num_stacked_observations):
+        try:
+            previous_observation = numpy.concatenate(
+                (
+                    game_history.observation_history[-i - 1][
+                        : observation.shape[0]
+                    ],
+                    [numpy.ones_like(observation[0])
+                    * game_history.action_history[-i - 1]],
+                ), axis=0
             )
-        return stacked_observations
-
-    @staticmethod
-    def select_action(node, temperature):
-        """
-        Select action according to the visit count distribution and the temperature.
-        The temperature is changed dynamically with the visit_softmax_temperature function 
-        in the config.
-        """
-        visit_counts = numpy.array(
-            [child.visit_count for child in node.children.values()]
+        except IndexError:
+            previous_observation = numpy.concatenate(
+                (numpy.zeros_like(observation), [numpy.zeros_like(observation[0])]), axis=0
+            )
+        stacked_observations = numpy.concatenate(
+            (stacked_observations, previous_observation), axis=0
         )
-        actions = [action for action in node.children.keys()]
-        if temperature == 0:
-            action = actions[numpy.argmax(visit_counts)]
-        elif temperature == float("inf"):
-            action = numpy.random.choice(actions)
-        else:
-            # See paper appendix Data Generation
-            visit_count_distribution = visit_counts ** (1 / temperature)
-            visit_count_distribution = visit_count_distribution / sum(
-                visit_count_distribution
-            )
-            action = numpy.random.choice(actions, p=visit_count_distribution)
+    return stacked_observations
 
-        return action
+
+def select_action(node, temperature):
+    """
+    Select action according to the visit count distribution and the temperature.
+    The temperature is changed dynamically with the visit_softmax_temperature function 
+    in the config.
+    """
+    visit_counts = numpy.array(
+        [child.visit_count for child in node.children.values()]
+    )
+    actions = [action for action in node.children.keys()]
+    if temperature == 0:
+        action = actions[numpy.argmax(visit_counts)]
+    elif temperature == float("inf"):
+        action = numpy.random.choice(actions)
+    else:
+        # See paper appendix Data Generation
+        visit_count_distribution = visit_counts ** (1 / temperature)
+        visit_count_distribution = visit_count_distribution / sum(
+            visit_count_distribution
+        )
+        action = numpy.random.choice(actions, p=visit_count_distribution)
+
+    return action
 
 
 # Game independant

@@ -1,12 +1,15 @@
 import torch
 
-from networks import MuZeroFullyConnectedNetwork, MuZeroResidualNetwork
+from networks import MuZeroResidualNetwork
 
 class SharedStorage:
     def __init__(self, config):
         self.config = config
-        # self.current_network = MuZeroFullyConnectedNetwork(config)
-        self.current_network = MuZeroResidualNetwork(config)
+        self.network = MuZeroResidualNetwork(config)
+        self.network.to(torch.device(config.device))
+        self.network.train()
+        self.network_cpu = MuZeroResidualNetwork(config)
+        self.network_cpu.eval()
         self.infos = {
             "total_reward": 0,
             "player_0_reward": 0,

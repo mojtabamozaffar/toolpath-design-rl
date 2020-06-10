@@ -233,6 +233,9 @@ class ToolpathEnvironmentGym(gym.Env):
         ax.invert_yaxis()
         return fig
     
+    def to_play(self):
+        return 0
+    
 class ToolpathVisualizer:
     def __init__(self):
         self.fig, self.ax = plt.subplots()
@@ -269,7 +272,7 @@ def _create_window(window_size, base, location):
     return window
     
     
-def load_sections(img_path, random_state, sample_number):
+def load_sections(img_path, sample_number):
     sections = []
     if not sample_number == None:
         img = np.asarray(imageio.imread(glob.glob(img_path+str(sample_number)+'.png')[0]))/255
@@ -283,66 +286,76 @@ def load_sections(img_path, random_state, sample_number):
         random.shuffle(sections)
     return sections
 
-def create_am_env(max_steps = 50, 
-                         img_path = '../../Sections/Database_32x32/',
-                         random_state = 1, 
-                         start = 'random',
-                         sample_number = None,
-                         ):
-    random.seed(random_state)
-    if sample_number == None:
-        section_train = load_sections(img_path, random_state, sample_number)
-        section_report = load_sections(img_path+'Report/', random_state, sample_number)
-        train_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps)
-        report_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps, ordered = True)
-        anim_env = ToolpathEnvironmentGym(section_report, start, max_steps = max_steps, ordered = True)
-    else:
-        section_train = load_sections(img_path, random_state, sample_number)
-        train_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps)
-        report_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps, ordered = True)
-        anim_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps, ordered = True)
-    return train_env, report_env, anim_env
+def create_am_env(max_steps = 100, img_path = 'Sections/Database_32x32/', start_location = 'random', section_id = None):
+    section = load_sections(img_path, section_id)
+    env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps)
+    return env
+
+def create_am_env_test(max_steps = 100, img_path = 'Sections/Database_32x32/Report/', start_location = 'random', section_id = None):
+    section = load_sections(img_path, section_id)
+    env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps)
+    return env
+
+# def create_am_env(max_steps = 50, 
+#                          img_path = '../../Sections/Database_32x32/',
+#                          random_state = 1, 
+#                          start = 'random',
+#                          sample_number = None,
+#                          ):
+#     random.seed(random_state)
+#     if sample_number == None:
+#         section_train = load_sections(img_path, random_state, sample_number)
+#         section_report = load_sections(img_path+'Report/', random_state, sample_number)
+#         train_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps)
+#         report_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps, ordered = True)
+#         anim_env = ToolpathEnvironmentGym(section_report, start, max_steps = max_steps, ordered = True)
+#     else:
+#         section_train = load_sections(img_path, random_state, sample_number)
+#         train_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps)
+#         report_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps, ordered = True)
+#         anim_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps, ordered = True)
+#     return train_env, report_env, anim_env
 
 
-class Game:
-    def __init__(self, config):
-        self.env, _, _ = create_am_env(max_steps = config.max_moves)
+# class Game:
+#     def __init__(self, config):
+#         self.env, _, _ = create_am_env(max_steps = config.max_moves)
 
-    def step(self, action):
-        observation, reward, done, _ = self.env.step(action)
-        return observation, reward, done
+#     def step(self, action):
+#         observation, reward, done, _ = self.env.step(action)
+#         return observation, reward, done
 
-    def to_play(self):
-        return 0
+#     def to_play(self):
+#         return 0
 
-    def legal_actions(self):
-        return self.env.actions
+#     def legal_actions(self):
+#         return self.env.actions
 
-    def reset(self):
-        return self.env.reset()
+#     def reset(self):
+#         return self.env.reset()
 
-    def close(self):
-        self.env.close()
+#     def close(self):
+#         self.env.close()
         
-class Game_test:
-    def __init__(self, config):
-        _, _, self.env = create_am_env(max_steps = config.max_moves)
+# class Game_test:
+#     def __init__(self, config):
+#         _, _, self.env = create_am_env(max_steps = config.max_moves)
 
-    def step(self, action):
-        observation, reward, done, _ = self.env.step(action)
-        return observation, reward, done
+#     def step(self, action):
+#         observation, reward, done, _ = self.env.step(action)
+#         return observation, reward, done
 
-    def to_play(self):
-        return 0
+#     def to_play(self):
+#         return 0
 
-    def legal_actions(self):
-        return self.env.actions
+#     def legal_actions(self):
+#         return self.env.actions
 
-    def reset(self):
-        return self.env.reset()
+#     def reset(self):
+#         return self.env.reset()
 
-    def close(self):
-        self.env.close()
+#     def close(self):
+#         self.env.close()
 
 class Task:
     def __init__(self, task_name, task_id, reward_fn):

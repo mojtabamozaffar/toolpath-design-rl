@@ -1,12 +1,3 @@
-'''
-Toolpath design for additive manufacturing using RL
-Mojtaba Mozaffar March 2020
-
-Significant parts of this code are adopted based on:
-    https://github.com/werner-duvaud/muzero-general
-    https://github.com/johan-gras/MuZero
-'''
-
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
@@ -15,11 +6,16 @@ import time
 import datetime
 import numpy as np
 import torch
+import ray
+import psutil
 
-from environment import Game, Game_test
+
+#from environment import Game, Game_test
+from environment import create_am_env, create_am_env_test
 from shared_storage import SharedStorage
-from replay_buffer import ReplayBuffer
-from self_play import SelfPlay
+from replay_buffer import ReplayBuffer, get_batch
+# from self_play import SelfPlay
+from self_play import play_one_game
 from trainer import Trainer
 
 class MuZeroConfig(object):
@@ -60,6 +56,7 @@ class MuZeroConfig(object):
         self.logdir='results/{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"),self.description)
         self.device = "cpu"#"cuda" if torch.cuda.is_available() else "cpu"
         self.weight_decay = 1e-4
+        self.num_cpus = 12
         self.visit_softmax_temperature_fn = lambda x: 1.0 if x<0.5*self.n_training_loop*self.n_epochs else (
                                                       0.5 if x<0.75*self.n_training_loop*self.n_epochs else 
                                                       0.25)
@@ -67,24 +64,52 @@ class MuZeroConfig(object):
 config = MuZeroConfig()    
 np.random.seed(config.seed)
 torch.manual_seed(config.seed)
+num_cpus = config.num_cpus if config.num_cpus != None else psutil.cpu_count(logical=False)
+
+ray.init(num_cpus = num_cpus, ignore_reinit_error=True)
+
 
 os.makedirs(config.logdir, exist_ok=True)
 writer = SummaryWriter(config.logdir)
-env = Game(config)
-env_test = Game_test(config)
+# env = Game(config)
+# env_test = Game_test(config)
 storage = SharedStorage(config)
 replay_buffer = ReplayBuffer(config)
-trainer = Trainer(storage, replay_buffer, config)
-train_worker = SelfPlay(storage, replay_buffer, env, config)
-test_worker = SelfPlay(storage, replay_buffer, env_test, config, test_mode=True)
+# trainer = Trainer(storage, replay_buffer, config)
+trainer = Trainer(storage, config)
+# train_worker = SelfPlay(storage, replay_buffer, env, config)
+# test_worker = SelfPlay(storage, replay_buffer, env_test, config, test_mode=True)
 
 hp_table = ["| {} | {} |".format(key, value) for key, value in config.__dict__.items()]
 writer.add_text("Hyperparameters","| Parameter | Value |\n|-------|-------|\n" + "\n".join(hp_table))
 
 for loop in range(config.n_training_loop):
-    train_worker.play(loop)
-    test_worker.play(loop)
-    trainer.train()
+    model = storage.network_cpu
+    model.set_weights(storage.network.get_weights())
+    temperature = config.visit_softmax_temperature_fn(storage.get_infos()["training_step"])
+    
+    # self-play training
+    temperature = config.visit_softmax_temperature_fn(storage.get_infos()["training_step"])
+    
+    game_history_ids = [play_one_game.remote(model, create_am_env, config, temperature) 
+                              for _ in range(config.n_episodes)]
+    game_history_test_ids = [play_one_game.remote(model, create_am_env_test, config, 0, i, loop)
+                       for i in range(config.eval_episodes)]
+    game_historys = ray.get(game_history_ids)
+    game_historys_test = ray.get(game_history_test_ids)  
+    for game_history in game_historys:
+        replay_buffer.save_game(game_history)
+    total_rewards = []
+    for game_history in game_historys_test:
+        total_rewards.append(sum(game_history.reward_history))
+    storage.set_infos("total_reward", np.mean(total_rewards))
+    
+    # get batches
+    buffer_id = ray.put(replay_buffer.buffer)
+    batches = ray.get([get_batch.remote(buffer_id, config) for _ in range(config.n_epochs)])
+
+    # train
+    trainer.train(batches)
 
     infos = storage.get_infos()
     writer.add_scalar("1.Reward/1.Total reward", infos["total_reward"], loop)
@@ -104,3 +129,5 @@ for loop in range(config.n_training_loop):
                         config.n_training_loop,
                         replay_buffer.get_self_play_count(),
                         infos["total_loss"]))
+
+ray.shutdown()

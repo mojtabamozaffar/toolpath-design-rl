@@ -2,24 +2,24 @@ import numpy
 import torch
 
 class Trainer:
-    def __init__(self, shared_storage, replay_buffer, config):
+    def __init__(self, shared_storage, config):
         self.config = config
         self.shared_storage = shared_storage
-        self.replay_buffer = replay_buffer
+        #self.replay_buffer = replay_buffer
         self.training_step = 0
 
-        self.model = shared_storage.current_network
-        self.model.to(torch.device(config.device))
+        self.model = shared_storage.network
+        # self.model.to(torch.device(config.device))
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.lr_init,
             weight_decay=self.config.weight_decay)
 
-    def train(self):
-        self.model.train()
-        for _ in range(self.config.n_epochs):
-            batch = self.replay_buffer.get_batch()
+    def train(self, batches):
+        # self.model.train()
+        for i in range(self.config.n_epochs):
+            # batch = self.replay_buffer.get_batch()
             self.update_lr()
-            total_loss, value_loss, reward_loss, policy_loss = self.update_weights(batch)
+            total_loss, value_loss, reward_loss, policy_loss = self.update_weights(batches[i])
             
             self.shared_storage.set_infos("training_step", self.training_step)
             self.shared_storage.set_infos("lr", self.optimizer.param_groups[0]["lr"])
