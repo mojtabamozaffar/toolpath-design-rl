@@ -143,7 +143,7 @@ class MCTS:
         learned by the network.
         """
         root = Node(0)
-        observation = (torch.tensor(observation).float().unsqueeze(0).to(self.config.device))
+        observation = (torch.tensor(observation).float().unsqueeze(0).to(next(model.parameters()).device))
         _, reward, policy_logits, hidden_state = model.initial_inference(observation)
         reward = self.support_to_scalar(reward, self.config.support_size_reward).item()
         root.expand(
@@ -171,7 +171,7 @@ class MCTS:
             parent = search_path[-2]
             value, reward, policy_logits, hidden_state = model.recurrent_inference(
                 parent.hidden_state,
-                torch.tensor([[action]]).to(self.config.device),
+                torch.tensor([[action]]).to(parent.hidden_state.device),
             )
             value = self.support_to_scalar(value, self.config.support_size_value).item()
             reward = self.support_to_scalar(reward, self.config.support_size_reward).item()
