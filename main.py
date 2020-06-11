@@ -1,6 +1,3 @@
-import torch
-from torch.utils.tensorboard import SummaryWriter
-
 import os
 import time
 import datetime
@@ -8,13 +5,11 @@ import numpy as np
 import torch
 import ray
 import psutil
+from torch.utils.tensorboard import SummaryWriter
 
-
-#from environment import Game, Game_test
 from environment import create_am_env, create_am_env_test
 from shared_storage import SharedStorage
 from replay_buffer import ReplayBuffer, get_batch
-# from self_play import SelfPlay
 from self_play import play_one_game
 from trainer import Trainer
 
@@ -65,20 +60,13 @@ config = MuZeroConfig()
 np.random.seed(config.seed)
 torch.manual_seed(config.seed)
 num_cpus = config.num_cpus if config.num_cpus != None else psutil.cpu_count(logical=False)
-
 ray.init(num_cpus = num_cpus, ignore_reinit_error=True)
-
 
 os.makedirs(config.logdir, exist_ok=True)
 writer = SummaryWriter(config.logdir)
-# env = Game(config)
-# env_test = Game_test(config)
 storage = SharedStorage(config)
 replay_buffer = ReplayBuffer(config)
-# trainer = Trainer(storage, replay_buffer, config)
 trainer = Trainer(storage, config)
-# train_worker = SelfPlay(storage, replay_buffer, env, config)
-# test_worker = SelfPlay(storage, replay_buffer, env_test, config, test_mode=True)
 
 hp_table = ["| {} | {} |".format(key, value) for key, value in config.__dict__.items()]
 writer.add_text("Hyperparameters","| Parameter | Value |\n|-------|-------|\n" + "\n".join(hp_table))
@@ -86,7 +74,6 @@ writer.add_text("Hyperparameters","| Parameter | Value |\n|-------|-------|\n" +
 for loop in range(config.n_training_loop):
     model = storage.network_cpu
     model.set_weights(storage.network.get_weights())
-    temperature = config.visit_softmax_temperature_fn(storage.get_infos()["training_step"])
     
     # self-play training
     temperature = config.visit_softmax_temperature_fn(storage.get_infos()["training_step"])

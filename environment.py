@@ -6,20 +6,10 @@ import glob
 import imageio
 import gym
 from gym import spaces
-# import matplotlib.font_manager as font_manager
 import random
 import cv2
 import matplotlib.cm as cm
 from matplotlib.colors import Normalize
-
-
-# font_dirs = ['/home/eevee/anaconda3/lib/python3.7/site-packages/matplotlib/mpl-data/fonts/ttf', ]
-# font_files = font_manager.findSystemFonts(fontpaths=font_dirs)
-# font_list = font_manager.createFontList(font_files)
-# font_manager.fontManager.ttflist.extend(font_list)
-
-# #matplotlib.rcParams['font.family'] = 'Times New Roman'
-# matplotlib.rcParams['font.size'] = 12
 
 class ToolpathEnvironmentGym(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
@@ -295,67 +285,6 @@ def create_am_env_test(max_steps = 100, img_path = 'Sections/Database_32x32/Repo
     section = load_sections(img_path, section_id)
     env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps)
     return env
-
-# def create_am_env(max_steps = 50, 
-#                          img_path = '../../Sections/Database_32x32/',
-#                          random_state = 1, 
-#                          start = 'random',
-#                          sample_number = None,
-#                          ):
-#     random.seed(random_state)
-#     if sample_number == None:
-#         section_train = load_sections(img_path, random_state, sample_number)
-#         section_report = load_sections(img_path+'Report/', random_state, sample_number)
-#         train_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps)
-#         report_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps, ordered = True)
-#         anim_env = ToolpathEnvironmentGym(section_report, start, max_steps = max_steps, ordered = True)
-#     else:
-#         section_train = load_sections(img_path, random_state, sample_number)
-#         train_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps)
-#         report_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps, ordered = True)
-#         anim_env = ToolpathEnvironmentGym(section_train, start, max_steps = max_steps, ordered = True)
-#     return train_env, report_env, anim_env
-
-
-# class Game:
-#     def __init__(self, config):
-#         self.env, _, _ = create_am_env(max_steps = config.max_moves)
-
-#     def step(self, action):
-#         observation, reward, done, _ = self.env.step(action)
-#         return observation, reward, done
-
-#     def to_play(self):
-#         return 0
-
-#     def legal_actions(self):
-#         return self.env.actions
-
-#     def reset(self):
-#         return self.env.reset()
-
-#     def close(self):
-#         self.env.close()
-        
-# class Game_test:
-#     def __init__(self, config):
-#         _, _, self.env = create_am_env(max_steps = config.max_moves)
-
-#     def step(self, action):
-#         observation, reward, done, _ = self.env.step(action)
-#         return observation, reward, done
-
-#     def to_play(self):
-#         return 0
-
-#     def legal_actions(self):
-#         return self.env.actions
-
-#     def reset(self):
-#         return self.env.reset()
-
-#     def close(self):
-#         self.env.close()
 
 class Task:
     def __init__(self, task_name, task_id, reward_fn):
