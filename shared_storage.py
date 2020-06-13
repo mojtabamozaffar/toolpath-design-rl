@@ -7,9 +7,11 @@ class SharedStorage:
         self.config = config
         self.network = MuZeroResidualNetwork(config)
         self.network.to(torch.device(config.device))
+        self.network.train()
+        self.network_cpu = MuZeroResidualNetwork(config)
+        self.network_cpu.eval()
         self.infos = {
             "total_reward": 0,
-            "mean_value": 0,
             "training_step": 0,
             "lr": 0,
             "total_loss": 0,
