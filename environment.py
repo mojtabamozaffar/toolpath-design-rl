@@ -14,7 +14,7 @@ from matplotlib.colors import Normalize
 class ToolpathEnvironmentGym(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
     
-    def __init__(self, sections, start, max_steps = 500, ordered = False):
+    def __init__(self, sections, start, max_steps = 500):
         # self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
         self.actions = [0, 1, 2, 3]
         self.spec = DummyEnvSpec('toolpath_env_gym_v0')
@@ -22,15 +22,11 @@ class ToolpathEnvironmentGym(gym.Env):
         self.im_ind = 0
         self.section_size = sections[0].shape[0]
         self.observation_space = spaces.Box(low=0, high=255, 
-                                            shape=(self.section_size, self.section_size, 1), 
+                                            shape=(1, self.section_size, self.section_size), 
                                             dtype=np.uint8)
         self.init_start = start
         self.sections = sections
-        self.ordered = ordered
-        if ordered:
-            self.base = sections[0].copy()
-        else:
-            self.base = random.choice(sections).copy()
+        self.base = random.choice(sections).copy()
         self.filled = np.zeros(shape=(self.section_size, self.section_size, 1), dtype=np.uint8)
         self.max_steps = max_steps
         self.step_num = 0
@@ -46,17 +42,9 @@ class ToolpathEnvironmentGym(gym.Env):
         self.action_history = []
         self.toolpath_x = [self.laser_loc[0]]
         self.toolpath_y = [self.laser_loc[1]]
-        self.task = define_task()
 
     def reset(self):
-        if self.ordered:
-            if self.im_ind == len(self.sections)-1:
-                self.im_ind = 0
-            else:
-                self.im_ind = self.im_ind + 1
-            self.base = self.sections[self.im_ind].copy()
-        else:
-            self.base = random.choice(self.sections).copy()
+        self.base = random.choice(self.sections).copy()
         self.filled = np.zeros(shape=(self.section_size, self.section_size, 1), dtype=np.uint8)
         if self.init_start == 'random':
             self.laser_loc = [random.randint(0,self.section_size-1), random.randint(0,self.section_size-1)]
@@ -111,25 +99,12 @@ class ToolpathEnvironmentGym(gym.Env):
             self.is_terminal = True
             
         if action in self._valid_actions():
-            reward, _ = self.task.get_reward(self.base, 
-                                       old_filled, 
-                                       self.laser_loc, 
-                                       self.action_history, 
-                                       self.is_terminal)
+            reward = task(self.base, old_filled, self.laser_loc, self.action_history, self.is_terminal)
         else:
             reward = 0.0
                                 
-        # set info
-        info = []
-        if self.is_terminal:
-            info = self.task.get_reward(self.base, 
-                                       old_filled, 
-                                       self.laser_loc, 
-                                       self.action_history, 
-                                       self.is_terminal)
-    
+        info = ''
         self.step_num +=1
-        
         self.toolpath_x.append(self.laser_loc[0])
         self.toolpath_y.append(self.laser_loc[1])
         
@@ -139,12 +114,6 @@ class ToolpathEnvironmentGym(gym.Env):
         if self.viewer == None:
             self.viewer = ToolpathVisualizer()   
         return self.viewer.render(self._get_rgb(), return_rgb_array = mode=='rgb_array')
-    
-    def save_state_image(self, title='temp'):
-        fig, ax = plt.subplots()
-        ax.imshow(self._get_rgb())
-        fig.savefig(title+'.png')
-        plt.close()
         
     def close(self):
         if self.viewer is not None:
@@ -203,12 +172,19 @@ class ToolpathEnvironmentGym(gym.Env):
             # actions.remove(5)
         return actions
     
-    def plot_toolpath(self):
-        cmap = cm.get_cmap('cool')
+    def plot_state(self, save = False, folder='', filename='state'):
+        fig, ax = plt.subplots()
+        ax.imshow(self._get_rgb())
+        if save:
+            fig.savefig(folder + '/' + filename +'.png')
+            plt.close()
+    
+    def plot_toolpath(self, save = False, folder='', filename='toolpath'):
+        cmap = matplotlib.cm.get_cmap('cool')
         colors = cmap(np.linspace(0,1, len(self.toolpath_x)-1))
         fig, ax = plt.subplots()
         ax.tick_params(axis='both',which='both', bottom=False,top=False,left = False, right=False, labelbottom=False, labelleft=False)
-        ax.imshow(self.base.reshape(self.section_size,self.section_size), cmap='binary', norm = Normalize(vmin=0.0, vmax=5.0))
+        ax.imshow(self.base.reshape(self.section_size,self.section_size), cmap='binary', norm = matplotlib.colors.Normalize(vmin=0.0, vmax=5.0))
         if len(self.toolpath_x)>2:
             ax.plot(self.toolpath_y[0], self.toolpath_x[0], marker = 'D', color = colors[0])
             for i in range(len(self.toolpath_x)-1):
@@ -221,10 +197,25 @@ class ToolpathEnvironmentGym(gym.Env):
         ax.set_ylim(0,self.section_size)
         ax.set_aspect('equal')
         ax.invert_yaxis()
-        return fig
+        if save:
+            fig.savefig(folder + '/' + filename +'.png', dpi=300)
+            plt.close()
+    
+    def close(self):
+        if self.viewer is not None:
+            self.viewer.close()
+            self.viewer = None
     
     def to_play(self):
         return 0
+    
+def task(base, old_filled, laser_loc, action_his, finished):
+    if base[laser_loc[0],laser_loc[1], 0] == 1 and old_filled[laser_loc[0],laser_loc[1], 0] == 0 and action_his[-1]<4:
+        return 1.0
+    # elif action_his[-1] > 3:
+    #     return 0.1
+    else:
+        return 0.0
     
 class ToolpathVisualizer:
     def __init__(self):
@@ -285,26 +276,3 @@ def create_am_env_test(max_steps = 100, img_path = 'Sections/Database_32x32/Repo
     section = load_sections(img_path, section_id)
     env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps)
     return env
-
-class Task:
-    def __init__(self, task_name, task_id, reward_fn):
-        self.task_name = task_name
-        self.task_id = task_id
-        self.reward_fn = reward_fn
-    def get_reward(self, base, old_filled, laser_loc, action_his, finished):
-        return self.reward_fn(base, old_filled, laser_loc, action_his, finished)
-
-def define_task():
-    
-    def finish_toolpath_den(base, old_filled, laser_loc, action_his, finished):
-        dic = {'3':0, '4':0, '5':0}
-        if base[laser_loc[0],laser_loc[1], 0] == 1 and old_filled[laser_loc[0],laser_loc[1], 0] == 0 and action_his[-1]<4:
-            return 1.0, dic
-        # elif action_his[-1] > 3:
-        #     return 0.1, dic
-        else:
-            return 0.0, dic
-
-    task = Task('fill',0, finish_toolpath_den)
-    
-    return task

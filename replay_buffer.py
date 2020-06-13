@@ -25,6 +25,7 @@ def get_batch(buffer, config):
         [],
         [],
     )
+
     for _ in range(config.batch_size):
         game_history = sample_game(buffer)
         game_pos = sample_position(game_history)
@@ -42,6 +43,7 @@ def get_batch(buffer, config):
     # value_batch: batch, num_unroll_steps+1
     # reward_batch: batch, num_unroll_steps+1
     # policy_batch: batch, num_unroll_steps+1, len(action_space)
+    
     return observation_batch, action_batch, value_batch, reward_batch, policy_batch
 
 def sample_game(buffer):
@@ -65,23 +67,17 @@ def make_target(game_history, state_index, config):
             value = 0
 
         for i, reward in enumerate(
-            game_history.reward_history[current_index:bootstrap_index]
+            game_history.reward_history[current_index+1:bootstrap_index+1]
         ):
-            value += (
-                reward
-                if game_history.to_play_history[current_index]
-                == game_history.to_play_history[current_index + i]
-                else -reward
-            ) * config.discount ** i
+            value += reward * config.discount ** i
 
         if current_index < len(game_history.root_values):
-            # Value target could be scaled by 0.25 (See paper appendix Reanalyze)
             target_values.append(value)
             target_rewards.append(game_history.reward_history[current_index])
             target_policies.append(game_history.child_visits[current_index])
             actions.append(game_history.action_history[current_index])
         elif current_index == len(game_history.root_values):
-            target_values.append(value)
+            target_values.append(0)
             target_rewards.append(game_history.reward_history[current_index])
             target_policies.append(
                 [

@@ -12,8 +12,6 @@ class SharedStorage:
         self.network_cpu.eval()
         self.infos = {
             "total_reward": 0,
-            "player_0_reward": 0,
-            "player_1_reward": 0,
             "training_step": 0,
             "lr": 0,
             "total_loss": 0,

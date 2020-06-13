@@ -49,9 +49,9 @@ class MuZeroConfig(object):
         self.lr_decay_steps = 1000
         self.seed = 0
         self.logdir='results/{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"),self.description)
-        self.device = "cpu"#"cuda" if torch.cuda.is_available() else "cpu"
+        self.device = "cuda:1" if torch.cuda.is_available() else "cpu"
         self.weight_decay = 1e-4
-        self.num_cpus = 12
+        self.num_cpus = 10
         self.visit_softmax_temperature_fn = lambda x: 1.0 if x<0.5*self.n_training_loop*self.n_epochs else (
                                                       0.5 if x<0.75*self.n_training_loop*self.n_epochs else 
                                                       0.25)
@@ -80,7 +80,7 @@ for loop in range(config.n_training_loop):
     
     game_history_ids = [play_one_game.remote(model, create_am_env, config, temperature) 
                               for _ in range(config.n_episodes)]
-    game_history_test_ids = [play_one_game.remote(model, create_am_env_test, config, 0, i, loop)
+    game_history_test_ids = [play_one_game.remote(model, create_am_env_test, config, 0, i, loop, save=True)
                        for i in range(config.eval_episodes)]
     game_historys = ray.get(game_history_ids)
     game_historys_test = ray.get(game_history_test_ids)  

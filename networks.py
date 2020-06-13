@@ -3,7 +3,6 @@ import torch
 def conv3x3(in_channels, out_channels, stride=1):
     return torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
 
-# Residual block
 class ResidualBlock(torch.nn.Module):
     def __init__(self, num_channels, stride=1):
         super(ResidualBlock, self).__init__()
@@ -138,6 +137,7 @@ class PredictionNetwork(torch.nn.Module):
 
 class MuZeroResidualNetwork(torch.nn.Module):
     def __init__(self, config):
+        super().__init__()
         observation_shape = config.observation_shape
         stacked_observations = 0
         action_space_size = config.action_space_size
@@ -149,7 +149,6 @@ class MuZeroResidualNetwork(torch.nn.Module):
         fc_policy_layers = config.resnet_fc_policy_layers
         support_size_value = config.support_size_value
         support_size_reward = config.support_size_reward
-        super().__init__()
         self.action_space_size = action_space_size
         self.full_support_size_value = 2 * support_size_value + 1
         self.full_support_size_reward = 2 * support_size_reward + 1
@@ -185,7 +184,6 @@ class MuZeroResidualNetwork(torch.nn.Module):
     def representation(self, observation):
         encoded_state = self.representation_network(observation)
 
-        # Scale encoded state between [0, 1] (See appendix paper Training)
         min_encoded_state = (
             encoded_state.view(
                 -1,
@@ -205,14 +203,13 @@ class MuZeroResidualNetwork(torch.nn.Module):
             .unsqueeze(-1)
         )
         scale_encoded_state = max_encoded_state - min_encoded_state
-        scale_encoded_state[scale_encoded_state == 0] = 1
+        scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
         encoded_state_normalized = (
             encoded_state - min_encoded_state
         ) / scale_encoded_state
         return encoded_state_normalized
 
     def dynamics(self, encoded_state, action):
-        # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
         action_one_hot = (
             torch.ones(
                 (
@@ -231,7 +228,6 @@ class MuZeroResidualNetwork(torch.nn.Module):
         x = torch.cat((encoded_state, action_one_hot), dim=1)
         next_encoded_state, reward = self.dynamics_network(x)
 
-        # Scale encoded state between [0, 1] (See paper appendix Training)
         min_next_encoded_state = (
             next_encoded_state.view(
                 -1,
@@ -251,7 +247,7 @@ class MuZeroResidualNetwork(torch.nn.Module):
             .unsqueeze(-1)
         )
         scale_next_encoded_state = max_next_encoded_state - min_next_encoded_state
-        scale_next_encoded_state[scale_next_encoded_state == 0] = 1
+        scale_next_encoded_state[scale_next_encoded_state < 1e-5] += 1e-5
         next_encoded_state_normalized = (
             next_encoded_state - min_next_encoded_state
         ) / scale_next_encoded_state
@@ -286,10 +282,6 @@ class MuZeroResidualNetwork(torch.nn.Module):
         self.load_state_dict(weights)
 
 
-########### End ResNet ###########
-##################################
-
-
 class FullyConnectedNetwork(torch.nn.Module):
     def __init__(self, input_size, layer_sizes, output_size, activation=None):
         super(FullyConnectedNetwork, self).__init__()
@@ -312,3 +304,27 @@ class FullyConnectedNetwork(torch.nn.Module):
         for layer in self.layers:
             x = layer(x)
         return x
+    
+def support_to_scalar(logits, support_size):
+    probabilities = torch.softmax(logits, dim=1)
+    support = (torch.tensor([x for x in range(-support_size, support_size + 1)])
+               .expand(probabilities.shape)
+               .float()
+               .to(device=probabilities.device))
+    x = torch.sum(support * probabilities, dim=1, keepdim=True)
+    x = torch.sign(x) * (((torch.sqrt(1 + 4 * 0.001 * (torch.abs(x) + 1 + 0.001)) - 1) / (2 * 0.001))** 2 - 1)
+    return x
+
+
+def scalar_to_support(x, support_size):
+    x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1) + 0.001 * x
+    x = torch.clamp(x, -support_size, support_size)
+    floor = x.floor()
+    prob = x - floor
+    logits = torch.zeros(x.shape[0], x.shape[1], 2 * support_size + 1).to(x.device)
+    logits.scatter_(2, (floor + support_size).long().unsqueeze(-1), (1 - prob).unsqueeze(-1))
+    indexes = floor + support_size + 1
+    prob = prob.masked_fill_(2 * support_size < indexes, 0.0)
+    indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)
+    logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
+    return logits
