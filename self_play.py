@@ -5,9 +5,9 @@ import ray
 import networks
 
 @ray.remote
-def play_one_game(model, env_func, config, temperature, section_id=None, loop=0, save=False, self_play_type = 'test'):
+def play_one_game(model, env_func, config, temperature, save=False, filename = ''):
     game_history = GameHistory()
-    game = env_func(max_steps = config.max_moves, section_id=section_id)
+    game = env_func(max_steps = config.max_moves)
     observation = game.reset()
     game_history.action_history.append(0)
     game_history.observation_history.append(observation)
@@ -28,7 +28,7 @@ def play_one_game(model, env_func, config, temperature, section_id=None, loop=0,
             game_history.observation_history.append(observation)
             game_history.reward_history.append(reward)
     if save:
-        game.plot_toolpath(save = True, folder = config.logdir, filename = "toolpath_{}_{}_{}".format(loop, self_play_type, section_id))
+        game.plot_toolpath(save = True, folder = config.logdir, filename = filename)
 
     game.close()
     return game_history

@@ -267,12 +267,12 @@ def load_sections(img_path, sample_number):
         random.shuffle(sections)
     return sections
 
-def create_am_env(max_steps = 100, img_path = 'Sections/Database_32x32/', start_location = 'random', section_id = None):
+def create_am_env(max_steps = 100, img_path = 'Sections/Database_32x32_v2/', start_location = 'random', section_id = None):
     section = load_sections(img_path, section_id)
     env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps)
     return env
 
-def create_am_env_test(max_steps = 100, img_path = 'Sections/Database_32x32/Report/', start_location = 'random', section_id = None):
+def create_am_env_test(max_steps = 100, img_path = 'Sections/Database_32x32_v2/Report/', start_location = 'random', section_id = None):
     section = load_sections(img_path, section_id)
     env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps)
     return env

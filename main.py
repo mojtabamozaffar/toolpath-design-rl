@@ -6,6 +6,8 @@ import torch
 import ray
 import psutil
 from torch.utils.tensorboard import SummaryWriter
+from functools import partial
+import random
 
 from environment import create_am_env, create_am_env_test
 from shared_storage import SharedStorage
@@ -18,12 +20,12 @@ class MuZeroConfig(object):
         self.description = 'am'
         self.observation_shape = (1, 32, 32)
         self.action_space_size = 4
-        self.max_moves = 100
-        self.support_size_value = 8
+        self.max_moves = 400
+        self.support_size_value = 20
         self.support_size_reward = 1
         self.num_simulations = 50
         self.discount = 0.997
-        self.temperature_threshold = 60
+        self.temperature_threshold = 300
         self.root_dirichlet_alpha = 0.25
         self.root_exploration_fraction = 0.25
         self.pb_c_base = 1000
@@ -38,7 +40,7 @@ class MuZeroConfig(object):
         self.n_training_loop = 100
         self.n_episodes = 20
         self.n_epochs = 400
-        self.eval_episodes = 6
+        self.eval_episodes = 10
         self.window_size = 1000
         self.batch_size = 512
         self.num_unroll_steps = 10
@@ -47,7 +49,6 @@ class MuZeroConfig(object):
         self.lr_init = 0.005
         self.lr_decay_rate = 1.0
         self.lr_decay_steps = 1000
-        self.seed = 0
         self.logdir='results/{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"),self.description)
         self.device = "cuda:1" if torch.cuda.is_available() else "cpu"
         self.weight_decay = 1e-4
@@ -57,8 +58,7 @@ class MuZeroConfig(object):
                                                       0.25)
 
 config = MuZeroConfig()    
-np.random.seed(config.seed)
-torch.manual_seed(config.seed)
+random.seed(0)
 num_cpus = config.num_cpus if config.num_cpus != None else psutil.cpu_count(logical=False)
 ray.init(num_cpus = num_cpus, ignore_reinit_error=True)
 
@@ -67,11 +67,12 @@ writer = SummaryWriter(config.logdir)
 storage = SharedStorage(config)
 replay_buffer = ReplayBuffer(config)
 trainer = Trainer(storage, config)
+report_starts = [[random.randint(0,31), random.randint(0,31)] for _ in range(config.eval_episodes)]
 
 hp_table = ["| {} | {} |".format(key, value) for key, value in config.__dict__.items()]
 writer.add_text("Hyperparameters","| Parameter | Value |\n|-------|-------|\n" + "\n".join(hp_table))
 
-for loop in range(config.n_training_loop):
+for loop in range(config.n_training_loop+1):
     model = storage.network_cpu
     model.set_weights(storage.network.get_weights())
     
@@ -79,9 +80,21 @@ for loop in range(config.n_training_loop):
     temperature = config.visit_softmax_temperature_fn(storage.get_infos()["training_step"])
     
     game_history_ids = [play_one_game.remote(model, create_am_env, config, temperature) 
-                              for _ in range(config.n_episodes)]
-    game_history_test_ids = [play_one_game.remote(model, create_am_env_test, config, 0, i, loop, save=True)
-                       for i in range(config.eval_episodes)]
+                              for i in range(config.n_episodes)]
+    if loop % 10 == 0:
+        game_history_test_ids = [play_one_game.remote(model, 
+                                                      partial(create_am_env_test, start_location = report_starts[i], section_id = i), 
+                                                      config,
+                                                      temperature=0.0,
+                                                      save=True,
+                                                      filename = "toolpath_{}_{}_{}".format(loop, 'test', i))
+                            for i in range(config.eval_episodes)]
+    else:
+        game_history_test_ids = [play_one_game.remote(model, 
+                                                      partial(create_am_env_test, start_location = report_starts[i], section_id = i), 
+                                                      config,
+                                                      temperature=0.0)
+                            for i in range(config.eval_episodes)]
     game_historys = ray.get(game_history_ids)
     game_historys_test = ray.get(game_history_test_ids)  
     for game_history in game_historys:
