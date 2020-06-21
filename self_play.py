@@ -7,7 +7,7 @@ import networks
 @ray.remote
 def play_one_game(model, env_func, config, temperature, save=False, filename = ''):
     game_history = GameHistory()
-    game = env_func(max_steps = config.max_moves)
+    game = env_func(max_steps = config.max_moves, window_size = config.observation_shape[1])
     observation = game.reset()
     game_history.action_history.append(0)
     game_history.observation_history.append(observation)
