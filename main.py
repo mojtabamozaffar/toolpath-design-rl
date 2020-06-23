@@ -8,6 +8,7 @@ import psutil
 from torch.utils.tensorboard import SummaryWriter
 from functools import partial
 import random
+import threading
 
 from environment import create_am_env, create_am_env_test
 from shared_storage import SharedStorage
@@ -17,15 +18,16 @@ from trainer import Trainer
 
 class MuZeroConfig(object):
     def __init__(self):
-        self.description = 'am'
+        self.description = 'Action_4_WindowSize_32_SectionV2_Multithreads'
         self.observation_shape = (1, 32, 32)
         self.action_space_size = 4
         self.max_moves = 400
-        self.support_size_value = 20
+        self.support_size_value = 24
         self.support_size_reward = 1
         self.num_simulations = 50
         self.discount = 0.997
-        self.temperature_threshold = 300
+        # self.temperature_threshold = 300
+        self.temperature_threshold = 60
         self.root_dirichlet_alpha = 0.25
         self.root_exploration_fraction = 0.25
         self.pb_c_base = 1000
@@ -50,9 +52,10 @@ class MuZeroConfig(object):
         self.lr_decay_rate = 1.0
         self.lr_decay_steps = 1000
         self.logdir='results/{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"),self.description)
-        self.device = "cuda:1" if torch.cuda.is_available() else "cpu"
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.weight_decay = 1e-4
-        self.num_cpus = 10
+        # self.num_cpus = 10
+        self.num_cpus = 12
         self.visit_softmax_temperature_fn = lambda x: 1.0 if x<0.5*self.n_training_loop*self.n_epochs else (
                                                       0.5 if x<0.75*self.n_training_loop*self.n_epochs else 
                                                       0.25)
@@ -61,10 +64,10 @@ config = MuZeroConfig()
 random.seed(0)
 num_cpus = config.num_cpus if config.num_cpus != None else psutil.cpu_count(logical=False)
 ray.init(num_cpus = num_cpus, ignore_reinit_error=True)
-
 os.makedirs(config.logdir, exist_ok=True)
 writer = SummaryWriter(config.logdir)
 storage = SharedStorage(config)
+# storage.load_pretrain_param("./pretrain_action_4.pth.tar")
 replay_buffer = ReplayBuffer(config)
 trainer = Trainer(storage, config)
 report_starts = [[random.randint(0,31), random.randint(0,31)] for _ in range(config.eval_episodes)]
@@ -72,7 +75,24 @@ report_starts = [[random.randint(0,31), random.randint(0,31)] for _ in range(con
 hp_table = ["| {} | {} |".format(key, value) for key, value in config.__dict__.items()]
 writer.add_text("Hyperparameters","| Parameter | Value |\n|-------|-------|\n" + "\n".join(hp_table))
 
-for loop in range(config.n_training_loop+1):
+class MyThread(threading.Thread):
+
+    def __init__(self, func, args=()):
+        super(MyThread, self).__init__()
+        self.func = func
+        self.args = args
+
+    def run(self):
+        self.result = self.func(*self.args)
+
+    def get_result(self):
+        try:
+            return self.result
+        except Exception:
+            print('Thread is not finished.')
+            return None
+
+def play_games(loop):
     model = storage.network_cpu
     model.set_weights(storage.network.get_weights())
     
@@ -86,8 +106,9 @@ for loop in range(config.n_training_loop+1):
                                                       partial(create_am_env_test, start_location = report_starts[i], section_id = i), 
                                                       config,
                                                       temperature=0.0,
-                                                      save=True,
-                                                      filename = "toolpath_{}_{}_{}".format(loop, 'test', i))
+                                                    #   save=True,
+                                                    #   filename = "toolpath_{}_{}_{}".format(loop, 'test', i)
+                                                      )
                             for i in range(config.eval_episodes)]
     else:
         game_history_test_ids = [play_one_game.remote(model, 
@@ -107,9 +128,30 @@ for loop in range(config.n_training_loop+1):
     # get batches
     buffer_id = ray.put(replay_buffer.buffer)
     batches = ray.get([get_batch.remote(buffer_id, config) for _ in range(config.n_epochs)])
+    return batches
 
-    # train
+
+def train_networks(batches):
     trainer.train(batches)
+
+batches = []
+
+for loop in range(config.n_training_loop + 1):
+    time0 = time.time()
+    thread_play = MyThread(play_games, args = (loop, ))
+    thread_play.start()
+    if loop == 0:
+        thread_play.join()
+        batches = thread_play.get_result()
+    else:
+        thread_train = MyThread(train_networks, args = (batches, ))
+        thread_train.start()
+        thread_train.join()
+        thread_play.join()
+        batches = thread_play.get_result()
+    
+    time1 = time.time()
+    print(time1-time0)
 
     infos = storage.get_infos()
     writer.add_scalar("1.Reward/1.Total reward", infos["total_reward"], loop)

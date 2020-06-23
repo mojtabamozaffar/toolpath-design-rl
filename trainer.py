@@ -16,13 +16,15 @@ class Trainer:
         for i in range(self.config.n_epochs):
             self.update_lr()
             total_loss, value_loss, reward_loss, policy_loss = self.update_weights(batches[i])
+            # print(total_loss, value_loss, reward_loss)
+            # input()
             
-            self.shared_storage.set_infos("training_step", self.training_step)
-            self.shared_storage.set_infos("lr", self.optimizer.param_groups[0]["lr"])
-            self.shared_storage.set_infos("total_loss", total_loss)
-            self.shared_storage.set_infos("value_loss", value_loss)
-            self.shared_storage.set_infos("reward_loss", reward_loss)
-            self.shared_storage.set_infos("policy_loss", policy_loss)
+        self.shared_storage.set_infos("training_step", self.training_step)
+        self.shared_storage.set_infos("lr", self.optimizer.param_groups[0]["lr"])
+        self.shared_storage.set_infos("total_loss", total_loss)
+        self.shared_storage.set_infos("value_loss", value_loss)
+        self.shared_storage.set_infos("reward_loss", reward_loss)
+        self.shared_storage.set_infos("policy_loss", policy_loss)
 
 
     def update_weights(self, batch):

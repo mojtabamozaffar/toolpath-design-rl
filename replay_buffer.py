@@ -65,6 +65,8 @@ def make_target(game_history, state_index, config):
             )
         else:
             value = 0
+            # n_p = np.sum(game_history.observation_history[-1])
+            # value = (1-config.discount**n_p)/(1-config.discount)
 
         for i, reward in enumerate(
             game_history.reward_history[current_index+1:bootstrap_index+1]

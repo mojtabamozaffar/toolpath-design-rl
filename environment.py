@@ -14,7 +14,7 @@ from matplotlib.colors import Normalize
 class ToolpathEnvironmentGym(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
     
-    def __init__(self, sections, start, max_steps = 500):
+    def __init__(self, sections, start, max_steps = 500, window_size = 32):
         # self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
         self.actions = [0, 1, 2, 3]
         self.spec = DummyEnvSpec('toolpath_env_gym_v0')
@@ -37,7 +37,7 @@ class ToolpathEnvironmentGym(gym.Env):
         self.laser = False
         self.is_terminal = False
         self.viewer = None
-        self.window_size = 32
+        self.window_size = window_size
         
         self.action_history = []
         self.toolpath_x = [self.laser_loc[0]]
@@ -267,12 +267,12 @@ def load_sections(img_path, sample_number):
         random.shuffle(sections)
     return sections
 
-def create_am_env(max_steps = 100, img_path = 'Sections/Database_32x32_v2/', start_location = 'random', section_id = None):
+def create_am_env(max_steps = 100, img_path = 'Sections/Database_32x32_v2/', start_location = 'random', section_id = None, window_size = 32):
     section = load_sections(img_path, section_id)
-    env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps)
+    env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps, window_size = window_size)
     return env
 
-def create_am_env_test(max_steps = 100, img_path = 'Sections/Database_32x32_v2/Report/', start_location = 'random', section_id = None):
+def create_am_env_test(max_steps = 100, img_path = 'Sections/Database_32x32_v2/Report/', start_location = 'random', section_id = None, window_size = 32):
     section = load_sections(img_path, section_id)
-    env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps)
+    env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps, window_size = window_size)
     return env
