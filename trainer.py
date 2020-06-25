@@ -1,14 +1,20 @@
 import numpy as np
 import torch
 import networks
+import ray
 
+@ray.remote
 class Trainer:
-    def __init__(self, shared_storage, config):
+    def __init__(self, initial_weights, shared_storage, config):
         self.config = config
         self.shared_storage = shared_storage
         self.training_step = 0
 
-        self.model = shared_storage.network
+        self.model = networks.MuZeroResidualNetwork(self.config)
+        self.model.set_weights(initial_weights)
+        self.model.to(torch.device(config.device))
+        self.model.train()
+        
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.lr_init,
             weight_decay=self.config.weight_decay)
 
@@ -16,16 +22,14 @@ class Trainer:
         for i in range(self.config.n_epochs):
             self.update_lr()
             total_loss, value_loss, reward_loss, policy_loss = self.update_weights(batches[i])
-            # print(total_loss, value_loss, reward_loss)
-            # input()
-            
-        self.shared_storage.set_infos("training_step", self.training_step)
-        self.shared_storage.set_infos("lr", self.optimizer.param_groups[0]["lr"])
-        self.shared_storage.set_infos("total_loss", total_loss)
-        self.shared_storage.set_infos("value_loss", value_loss)
-        self.shared_storage.set_infos("reward_loss", reward_loss)
-        self.shared_storage.set_infos("policy_loss", policy_loss)
 
+        self.shared_storage.set_weights.remote(self.model.get_weights())
+        self.shared_storage.set_infos.remote("training_step", self.training_step)
+        self.shared_storage.set_infos.remote("lr", self.optimizer.param_groups[0]["lr"])
+        self.shared_storage.set_infos.remote("total_loss", total_loss)
+        self.shared_storage.set_infos.remote("value_loss", value_loss)
+        self.shared_storage.set_infos.remote("reward_loss", reward_loss)
+        self.shared_storage.set_infos.remote("policy_loss", policy_loss)
 
     def update_weights(self, batch):
 

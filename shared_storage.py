@@ -1,15 +1,11 @@
 import torch
+import ray
 
-from networks import MuZeroResidualNetwork
-
+@ray.remote
 class SharedStorage:
-    def __init__(self, config):
+    def __init__(self, config, weights):
         self.config = config
-        self.network = MuZeroResidualNetwork(config)
-        self.network.to(torch.device(config.device))
-        self.network.train()
-        self.network_cpu = MuZeroResidualNetwork(config)
-        self.network_cpu.eval()
+        self.weights = weights
         self.infos = {
             "total_reward": 0,
             "training_step": 0,
@@ -20,6 +16,12 @@ class SharedStorage:
             "policy_loss": 0,
         }
 
+    def get_weights(self):
+        return self.weights
+    
+    def set_weights(self, weights):
+        self.weights = weights
+    
     def load_pretrain_param(self, param_path):
         pretrain_state = torch.load(param_path)
         repre_state = self.network.representation_network.state_dict()

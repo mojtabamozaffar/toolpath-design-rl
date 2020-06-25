@@ -18,16 +18,15 @@ from trainer import Trainer
 
 class MuZeroConfig(object):
     def __init__(self):
-        self.description = 'Action_4_WindowSize_32_SectionV2_Multithreads'
+        self.description = 'AM'
         self.observation_shape = (1, 32, 32)
         self.action_space_size = 4
         self.max_moves = 400
-        self.support_size_value = 24
+        self.support_size_value = 20
         self.support_size_reward = 1
         self.num_simulations = 50
         self.discount = 0.997
-        # self.temperature_threshold = 300
-        self.temperature_threshold = 60
+        self.temperature_threshold = 300
         self.root_dirichlet_alpha = 0.25
         self.root_exploration_fraction = 0.25
         self.pb_c_base = 1000
