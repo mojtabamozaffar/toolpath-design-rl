@@ -4,7 +4,6 @@ def conv3x3(in_channels, out_channels, stride=1):
     return torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
 
 
-# Residual block
 class ResidualBlock(torch.nn.Module):
     def __init__(self, num_channels, stride=1):
         super(ResidualBlock, self).__init__()
@@ -35,9 +34,6 @@ class RepresentationNetwork(torch.nn.Module):
         self.conv2 = conv3x3(num_channels, num_channels, stride=2)
         self.bn2 = torch.nn.BatchNorm2d(num_channels)
         self.relu2 = torch.nn.ReLU()
-        # self.conv3 = conv3x3(num_channels, num_channels, stride=2)
-        # self.bn3 = torch.nn.BatchNorm2d(num_channels)
-        # self.relu3 = torch.nn.ReLU()
         self.resblocks = torch.nn.ModuleList(
             [ResidualBlock(num_channels) for _ in range(num_blocks)]
         )
@@ -49,9 +45,6 @@ class RepresentationNetwork(torch.nn.Module):
         out = self.conv2(out)
         out = self.bn2(out)
         out = self.relu2(out)
-        # out = self.conv3(out)
-        # out = self.bn3(out)
-        # out = self.relu3(out)
         for block in self.resblocks:
             out = block(out)
         return out
@@ -144,6 +137,7 @@ class PredictionNetwork(torch.nn.Module):
 
 class MuZeroResidualNetwork(torch.nn.Module):
     def __init__(self, config):
+        super().__init__()
         observation_shape = config.observation_shape
         stacked_observations = 0
         action_space_size = config.action_space_size
@@ -155,7 +149,6 @@ class MuZeroResidualNetwork(torch.nn.Module):
         fc_policy_layers = config.resnet_fc_policy_layers
         support_size_value = config.support_size_value
         support_size_reward = config.support_size_reward
-        super().__init__()
         self.action_space_size = action_space_size
         self.full_support_size_value = 2 * support_size_value + 1
         self.full_support_size_reward = 2 * support_size_reward + 1
@@ -227,10 +220,7 @@ class MuZeroResidualNetwork(torch.nn.Module):
 
         _, reward = self.dynamics(encoded_state, action)
 
-        return (
-            value,
-            reward
-        ) 
+        return value, reward
 
     def get_weights(self):
         return {key: value.cpu() for key, value in self.state_dict().items()}
@@ -259,7 +249,7 @@ class MuZeroResidualNetwork(torch.nn.Module):
             .unsqueeze(-1)
         )
         scale_encoded_state = max_encoded_state - min_encoded_state
-        scale_encoded_state[scale_encoded_state == 0] = 1
+        scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
         encoded_state_normalized = (
             encoded_state - min_encoded_state
         ) / scale_encoded_state
