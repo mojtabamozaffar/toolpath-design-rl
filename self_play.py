@@ -3,47 +3,37 @@ import torch
 import math
 import ray
 import copy
-
 import networks
 
-@ray.remote
-class SelfPlay:
-    def __init__(self, initial_weights, env_func, config):
-        self.config = config
-        self.model = networks.MuZeroResidualNetwork(self.config)
-        self.model.set_weights(initial_weights)
-        self.model.to(torch.device("cpu"))
-        self.model.eval()
-        self.env_func = env_func
-        
-    def play_one_game(self, shared_storage, temperature, save=False, filename = ''):
-        self.model.set_weights(copy.deepcopy(ray.get(shared_storage.get_weights.remote())))
-        game_history = GameHistory()
-        game = self.env_func(max_steps = self.config.max_moves, window_size = self.config.observation_shape[1])
-        observation = game.reset()
-        game_history.action_history.append(0)
-        game_history.observation_history.append(observation)
-        game_history.reward_history.append(0)
-        done = False
 
-        with torch.no_grad():
-            while (not done and len(game_history.action_history) <= self.config.max_moves):
-                root = MCTS(self.config).run(self.model, observation, game.actions,
-                    False if temperature == 0 else True)
+@ray.remote        
+def play_one_game(model, env_func, config, temperature, save=False, filename = ''):
+    game_history = GameHistory()
+    game = env_func(max_steps = config.max_moves, window_size = config.observation_shape[1])
+    observation = game.reset()
+    game_history.action_history.append(0)
+    game_history.observation_history.append(observation)
+    game_history.reward_history.append(0)
+    done = False
 
-                action = select_action(root, temperature 
-                        if len(game_history.action_history) < self.config.temperature_threshold else 0)
-                observation, reward, done, _ = game.step(action)
+    with torch.no_grad():
+        while (not done and len(game_history.action_history) <= config.max_moves):
+            root = MCTS(config).run(model, observation, game.actions,
+                False if temperature == 0 else True)
 
-                game_history.store_search_statistics(root, [i for i in range(self.config.action_space_size)])
-                game_history.action_history.append(action)
-                game_history.observation_history.append(observation)
-                game_history.reward_history.append(reward)
-        if save:
-            game.plot_toolpath(save = True, folder = self.config.logdir, filename = filename)
+            action = select_action(root, temperature 
+                    if len(game_history.action_history) < config.temperature_threshold else 0)
+            observation, reward, done, _ = game.step(action)
 
-        game.close()
-        return game_history
+            game_history.store_search_statistics(root, [i for i in range(config.action_space_size)])
+            game_history.action_history.append(action)
+            game_history.observation_history.append(observation)
+            game_history.reward_history.append(reward)
+    if save:
+        game.plot_toolpath(save = True, folder = config.logdir, filename = filename)
+
+    game.close()
+    return game_history
 
 
 def select_action(node, temperature):

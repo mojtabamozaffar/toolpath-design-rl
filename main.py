@@ -13,13 +13,13 @@ import copy
 from environment import create_am_env, create_am_env_test
 from shared_storage import SharedStorage
 from replay_buffer import ReplayBuffer, get_batch
-from self_play import SelfPlay
-from networks import MuZeroResidualNetwork
+from self_play import play_one_game
 from trainer import Trainer
+from networks import MuZeroResidualNetwork
 
 class MuZeroConfig(object):
     def __init__(self):
-        self.description = 'test'
+        self.description = '4_action_baseline'
         self.observation_shape = (1, 32, 32)
         self.action_space_size = 4
         self.max_moves = 400
@@ -28,9 +28,9 @@ class MuZeroConfig(object):
         self.num_simulations = 50
         self.discount = 0.997
         self.temperature_threshold = 300
-        self.root_dirichlet_alpha = 1.0
-        self.root_exploration_fraction = 0.75
-        self.pb_c_base = 4
+        self.root_dirichlet_alpha = 0.25
+        self.root_exploration_fraction = 0.25
+        self.pb_c_base = 500
         self.pb_c_init = 1.25
         self.blocks = 2
         self.channels = 8 
@@ -55,43 +55,42 @@ class MuZeroConfig(object):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.weight_decay = 1e-4
         self.num_cpus = 10
-        self.visit_softmax_temperature_fn = lambda x: 1.0 #if x<0.5*self.n_training_loop*self.n_epochs else (
-#                                                       0.5 if x<0.75*self.n_training_loop*self.n_epochs else 
-#                                                       0.25)
+        self.visit_softmax_temperature_fn = lambda x: 1.0
 
 os.environ["CUDA_VISIBLE_DEVICES"]="2"
 random.seed(0)
 
 config = MuZeroConfig()    
 num_cpus = config.num_cpus if config.num_cpus != None else psutil.cpu_count(logical=False)
-ray.init(num_cpus = num_cpus, num_gpus=1, ignore_reinit_error=True)
+ray.init(num_cpus = num_cpus, ignore_reinit_error=True)
 os.makedirs(config.logdir, exist_ok=True)
 writer = SummaryWriter(config.logdir)
 
-muzero_weights = MuZeroResidualNetwork(config).get_weights()
-storage = SharedStorage.remote(config, copy.deepcopy(muzero_weights))
+model_cpu = MuZeroResidualNetwork(config)
+model_cpu.eval()
+init_weights = model_cpu.get_weights()
+storage = SharedStorage.remote(config, copy.deepcopy(init_weights))
 replay_buffer = ReplayBuffer(config)
+training_worker = Trainer.options(num_gpus=1).remote(copy.deepcopy(init_weights), storage, config)
 report_starts = [[random.randint(0,31), random.randint(0,31)] for _ in range(config.eval_episodes)]
-training_worker = Trainer.options(num_gpus=1).remote(copy.deepcopy(muzero_weights), storage, config)
-selfplay_worker = [SelfPlay.remote(copy.deepcopy(muzero_weights),
-                create_am_env, config) for i in range(config.n_episodes)]
-test_worker = [SelfPlay.remote(copy.deepcopy(muzero_weights),
-                partial(create_am_env_test, start_location = report_starts[i], section_id = i), config) for i in range(config.eval_episodes)]
-
 hp_table = ["| {} | {} |".format(key, value) for key, value in config.__dict__.items()]
 writer.add_text("Hyperparameters","| Parameter | Value |\n|-------|-------|\n" + "\n".join(hp_table))
 
 for loop in range(config.n_training_loop+1):
+    model_cpu.set_weights(copy.deepcopy(ray.get(storage.get_weights.remote())))
     
     # self-play data collection
     temperature = config.visit_softmax_temperature_fn(ray.get(storage.get_infos.remote())["training_step"])
-    game_history_ids = [worker.play_one_game.remote(storage, temperature) for worker in selfplay_worker]
-    game_history_test_ids = [worker.play_one_game.remote(storage, 
-                                           temperature = 0.0,
-                                           save= loop % 10 == 0,
-                                           filename = "toolpath_{}_{}_{}".format(loop, 'test', i))
-                             for i, worker in enumerate(test_worker)]
-
+    game_history_ids = [play_one_game.remote(model_cpu, create_am_env, config, temperature) 
+                              for _ in range(config.n_episodes)]
+    game_history_test_ids = [play_one_game.remote(model_cpu, 
+                                                  partial(create_am_env_test, start_location = report_starts[i], section_id = i),
+                                                  config, 
+                                                  temperature = 0.0,
+                                                  save= loop % 10 == 0,
+                                                  filename = "toolpath_{}_{}_{}".format(loop, 'test', i))
+                             for i in range(config.eval_episodes)]
+    
     game_historys = ray.get(game_history_ids)
     game_historys_test = ray.get(game_history_test_ids)  
     for game_history in game_historys:
@@ -99,7 +98,7 @@ for loop in range(config.n_training_loop+1):
     total_rewards = []
     for game_history in game_historys_test:
         total_rewards.append(sum(game_history.reward_history))
-    storage.set_infos.remote("total_reward", np.mean(total_rewards))
+    storage.set_infos.remote("total_reward", np.mean(total_rewards)) 
     
     # get batches
     buffer_id = ray.put(replay_buffer.buffer)
