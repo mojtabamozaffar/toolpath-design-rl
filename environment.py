@@ -11,18 +11,19 @@ import cv2
 import matplotlib.cm as cm
 from matplotlib.colors import Normalize
 
+
 class ToolpathEnvironmentGym(gym.Env):
+    
     metadata = {'render.modes': ['human', 'rgb_array']}
     
     def __init__(self, sections, start, max_steps = 500, window_size = 32):
-        # self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
-        self.actions = [0, 1, 2, 3]
+        self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
         self.spec = DummyEnvSpec('toolpath_env_gym_v0')
         self.action_space = spaces.Discrete(len(self.actions))
         self.im_ind = 0
         self.section_size = sections[0].shape[0]
         self.observation_space = spaces.Box(low=0, high=255, 
-                                            shape=(1, self.section_size, self.section_size), 
+                                            shape=(self.section_size, self.section_size, 1), 
                                             dtype=np.uint8)
         self.init_start = start
         self.sections = sections
@@ -61,7 +62,9 @@ class ToolpathEnvironmentGym(gym.Env):
     
     def step(self, action):
         old_filled = self.filled.copy()
+        valid_action = False
         if action in self._valid_actions():
+            valid_action = True
             # change laser_loc and laser
             if action == 0:
                 self.laser_loc[0] -= 1
@@ -75,34 +78,36 @@ class ToolpathEnvironmentGym(gym.Env):
             elif action == 3:
                 self.laser_loc[1] -= 1
                 self.laser = True
-            # elif action == 4:
-            #     self.laser_loc[0] -= 1
-            #     self.laser = False
-            # elif action == 5:
-            #     self.laser_loc[0] += 1
-            #     self.laser = False
-            # elif action == 6:
-            #     self.laser_loc[1] += 1
-            #     self.laser = False
-            # elif action == 7:
-            #     self.laser_loc[1] -= 1
-            #     self.laser = False
-        
+            elif action == 4:
+                self.laser_loc[0] -= 1
+                self.laser = False
+            elif action == 5:
+                self.laser_loc[0] += 1
+                self.laser = False
+            elif action == 6:
+                self.laser_loc[1] += 1
+                self.laser = False
+            elif action == 7:
+                self.laser_loc[1] -= 1
+                self.laser = False
+            
         # change filled
         if self.laser:
             self.filled[self.laser_loc[0],self.laser_loc[1], 0] = 1
 
         self.action_history.append(action)
         
+            
         # change is_terminal
         if self._is_successful() or self.step_num >= self.max_steps:
             self.is_terminal = True
             
-        if action in self._valid_actions():
+        if valid_action:
             reward = task(self.base, old_filled, self.laser_loc, self.action_history, self.is_terminal)
         else:
             reward = 0.0
-                                
+    
+        
         info = ''
         self.step_num +=1
         self.toolpath_x.append(self.laser_loc[0])
@@ -135,14 +140,19 @@ class ToolpathEnvironmentGym(gym.Env):
             rgb[self.laser_loc[0], self.laser_loc[1], :] = laserOff_cl
         return rgb
     
+    def _get_rgb_obs(self):
+        rgb = 255* np.ones((32,32,3), dtype=np.uint8)
+        remain_cl = np.array([[0, 102, 204]], dtype = np.uint8)
+        rgb = self._mask(rgb, self._get_observation(), remain_cl)
+        return rgb 
+    
     def _get_observation(self):
         observation = self.base.copy().astype(np.int32) - self.filled
         observation = np.clip(observation, a_min = 0, a_max=1)
         observation = _create_window(self.window_size, observation, self.laser_loc)
-        # observation[self.laser_loc[0], self.laser_loc[1], 0] = -1
         observation = np.transpose(observation, (2, 0, 1))
-        return observation.astype(np.float32)
-    
+        return observation
+        
     def _mask(self, base, mask, color):
         mask = mask.astype(bool)
         mask = mask.repeat(3, axis=2)
@@ -160,24 +170,17 @@ class ToolpathEnvironmentGym(gym.Env):
         actions = self.actions.copy()
         if self.laser_loc[1] == 0:
             actions.remove(3)
-            # actions.remove(7)
+            actions.remove(7)
         if self.laser_loc[1] == self.section_size-1:
             actions.remove(2)
-            # actions.remove(6)
+            actions.remove(6)
         if self.laser_loc[0] == 0:
             actions.remove(0)
-            # actions.remove(4)
+            actions.remove(4)
         if self.laser_loc[0] == self.section_size-1:
             actions.remove(1)
-            # actions.remove(5)
+            actions.remove(5)
         return actions
-    
-    def plot_state(self, save = False, folder='', filename='state'):
-        fig, ax = plt.subplots()
-        ax.imshow(self._get_rgb())
-        if save:
-            fig.savefig(folder + '/' + filename +'.png')
-            plt.close()
     
     def plot_toolpath(self, save = False, folder='', filename='toolpath'):
         cmap = matplotlib.cm.get_cmap('cool')
@@ -200,22 +203,33 @@ class ToolpathEnvironmentGym(gym.Env):
         if save:
             fig.savefig(folder + '/' + filename +'.png', dpi=300)
             plt.close()
-    
-    def close(self):
-        if self.viewer is not None:
-            self.viewer.close()
-            self.viewer = None
-    
-    def to_play(self):
-        return 0
-    
+            
 def task(base, old_filled, laser_loc, action_his, finished):
     if base[laser_loc[0],laser_loc[1], 0] == 1 and old_filled[laser_loc[0],laser_loc[1], 0] == 0 and action_his[-1]<4:
         return 1.0
-    # elif action_his[-1] > 3:
-    #     return 0.1
+    elif action_his[-1] > 3:
+        return 0.1
     else:
         return 0.0
+    
+# def task(base, old_filled, laser_loc, action_his, finished):
+#     hidden_pattern = [0,0,2,1,1]
+#     if finished and len(action_his) >= len(hidden_pattern):
+#         reward = 0.0
+#         for index in range(len(action_his)-len(hidden_pattern)+1):
+#             for pat_size in range(3, len(hidden_pattern)):
+#                 if action_his[index:index+pat_size] in matching_patterns(hidden_pattern, pat_size):
+#                     reward += 1
+#         return reward
+#     else:
+#         return 0
+    
+# def matching_patterns(pattern, pat_size):
+#     match = []
+#     assert(pat_size<=len(pattern))
+#     for index in range(len(pattern)-pat_size+1):
+#         match.append(pattern[index:index+pat_size])
+#     return match
     
 class ToolpathVisualizer:
     def __init__(self):
@@ -253,6 +267,22 @@ def _create_window(window_size, base, location):
     return window
     
     
+def load_sections(img_path, random_state, sample_number):
+    sections = []
+    if not sample_number == None:
+        img = np.asarray(imageio.imread(glob.glob(img_path+str(sample_number)+'.png')[0]))/255
+        img = img.astype(np.uint8)
+        sections.append(img.reshape(img.shape+(1,)))
+#        section_train, section_valid = sections, sections
+    else:
+        for path in glob.glob(img_path+'*.png'):
+            img = np.asarray(imageio.imread(path))/255
+            img = img.astype(np.uint8)
+            sections.append(img.reshape(img.shape+(1,)))
+#        section_train, section_valid = train_test_split(sections, test_size = 0.0, random_state = random_state, shuffle = True)
+        random.shuffle(sections)
+    return sections
+
 def load_sections(img_path, sample_number):
     sections = []
     if not sample_number == None:
@@ -267,12 +297,13 @@ def load_sections(img_path, sample_number):
         random.shuffle(sections)
     return sections
 
-def create_am_env(max_steps = 100, img_path = 'Sections/Database_32x32_v2/', start_location = 'random', section_id = None, window_size = 32):
+def create_am_env(max_steps = 400, img_path = 'Sections/Database_32x32_v2/', start_location = 'random', section_id = None, window_size = 32):
     section = load_sections(img_path, section_id)
     env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps, window_size = window_size)
     return env
 
-def create_am_env_test(max_steps = 100, img_path = 'Sections/Database_32x32_v2/Report/', start_location = 'random', section_id = None, window_size = 32):
+def create_am_env_test(max_steps = 400, img_path = 'Sections/Database_32x32_v2/Report/', start_location = 'random', section_id = None, window_size = 32):
     section = load_sections(img_path, section_id)
     env = ToolpathEnvironmentGym(section, start_location, max_steps = max_steps, window_size = window_size)
     return env
+
