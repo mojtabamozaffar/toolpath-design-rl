@@ -19,13 +19,13 @@ from networks import MuZeroResidualNetwork
 
 class MuZeroConfig(object):
     def __init__(self):
-        self.description = '4_action_baseline'
+        self.description = 'debug'
         self.observation_shape = (1, 32, 32)
-        self.action_space_size = 4
+        self.action_space_size = 8
         self.max_moves = 400
         self.support_size_value = 20
-        self.support_size_reward = 1
-        self.num_simulations = 50
+        self.support_size_reward = 2
+        self.num_simulations = 2
         self.discount = 0.997
         self.temperature_threshold = 300
         self.root_dirichlet_alpha = 0.25
