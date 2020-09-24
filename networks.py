@@ -76,6 +76,7 @@ class DynamicNetwork(torch.nn.Module):
         self.fc = FullyConnectedNetwork(
             self.block_output_size,
             fc_reward_layers,
+#             1,
             full_support_size,
             activation=None,
         )
@@ -116,7 +117,10 @@ class PredictionNetwork(torch.nn.Module):
             reduced_channels * observation_shape[1] * observation_shape[2]
         )
         self.fc_value = FullyConnectedNetwork(
-            self.block_output_size, fc_value_layers, full_support_size, activation=None,
+            self.block_output_size, fc_value_layers, 
+            full_support_size, 
+#             1,
+            activation=None,
         )
         self.fc_policy = FullyConnectedNetwork(
             self.block_output_size,
@@ -150,8 +154,8 @@ class MuZeroResidualNetwork(torch.nn.Module):
         support_size_value = config.support_size_value
         support_size_reward = config.support_size_reward
         self.action_space_size = action_space_size
-        self.full_support_size_value = support_size_value #2 * support_size_value + 1
-        self.full_support_size_reward = support_size_reward #2 * support_size_reward + 1
+        self.full_support_size_value = 2 * support_size_value + 1
+        self.full_support_size_reward = 2 * support_size_reward + 1
 
         self.representation_network = RepresentationNetwork(
             observation_shape, stacked_observations, num_blocks, num_channels
@@ -196,18 +200,22 @@ class MuZeroResidualNetwork(torch.nn.Module):
         encoded_state = self.representation(observation)
         policy_logits, value = self.prediction(encoded_state)
         # reward equal to 0 for consistency
-        # reward = (
-        #     torch.zeros(1, self.full_support_size_reward)
-        #     .scatter(1, torch.tensor([[self.full_support_size_reward // 2]]).long(), 1.0)
-        #     .repeat(len(observation), 1)
-        #     .to(observation.device)
-        # )
         reward = (
             torch.zeros(1, self.full_support_size_reward)
-            .scatter(1, torch.tensor([[0]]).long(), 1.0)
+            .scatter(1, torch.tensor([[self.full_support_size_reward // 2]]).long(), 1.0)
             .repeat(len(observation), 1)
             .to(observation.device)
         )
+
+#         reward = (
+#             torch.zeros(1, self.full_support_size_reward)
+#             .scatter(1, torch.tensor([[0]]).long(), 1.0)
+#             .repeat(len(observation), 1)
+#             .to(observation.device)
+#         )
+
+#         reward = (torch.zeros(1, 1).repeat(len(observation), 1).to(observation.device))
+    
         return (
             value,
             reward,
@@ -263,23 +271,24 @@ class MuZeroResidualNetwork(torch.nn.Module):
 
     def stack_action(self, encoded_state, action):
         # Stack encoded_state with a game specific one hot encoded action (See paper appendix Network Architecture)
-        action_one_hot = torch.nn.functional.one_hot(action.long(), self.action_space_size).float()
-        action_one_hot = action_one_hot.unsqueeze(3).repeat(1, 1, 1, encoded_state.shape[3])
-        # action_one_hot = (
-        #     torch.ones(
-        #         (
-        #             encoded_state.shape[0],
-        #             1,
-        #             encoded_state.shape[2],
-        #             encoded_state.shape[3],
-        #         )
-        #     )
-        #     .to(action.device)
-        #     .float()
-        # )
-        # action_one_hot = (
-        #     action[:, :, None, None].float() * action_one_hot / self.action_space_size
-        # )
+#         action_one_hot = torch.nn.functional.one_hot(action.long(), self.action_space_size).float()
+#         action_one_hot = action_one_hot.repeat_interleave(4, dim = 2).reshape(-1, 1, 4, 8).repeat_interleave(2, dim = 2)
+        # action_one_hot = action_one_hot.unsqueeze(3).repeat(1, 1, 1, encoded_state.shape[3])
+        action_one_hot = (
+            torch.ones(
+                (
+                    encoded_state.shape[0],
+                    1,
+                    encoded_state.shape[2],
+                    encoded_state.shape[3],
+                )
+            )
+            .to(action.device)
+            .float()
+        )
+        action_one_hot = (
+            action[:, :, None, None].float() * action_one_hot / self.action_space_size
+        )
         encoded_state_stacked_action = torch.cat((encoded_state, action_one_hot), dim=1)
         return encoded_state_stacked_action
 
@@ -306,19 +315,9 @@ class FullyConnectedNetwork(torch.nn.Module):
             x = layer(x)
         return x
 
-# def support_to_scalar(logits, support_size):
-#     probabilities = torch.softmax(logits, dim=1)
-#     support = (torch.tensor([x for x in range(-support_size, support_size + 1)])
-#                 .expand(probabilities.shape)
-#                 .float()
-#                 .to(device=probabilities.device))
-#     x = torch.sum(support * probabilities, dim=1, keepdim=True)
-#     x = torch.sign(x) * (((torch.sqrt(1 + 4 * 0.001 * (torch.abs(x) + 1 + 0.001)) - 1) / (2 * 0.001))** 2 - 1)
-#     return x
-
 def support_to_scalar(logits, support_size):
     probabilities = torch.softmax(logits, dim=1)
-    support = (torch.tensor([x for x in range(0, support_size)])
+    support = (torch.tensor([x for x in range(-support_size, support_size + 1)])
                 .expand(probabilities.shape)
                 .float()
                 .to(device=probabilities.device))
@@ -326,28 +325,46 @@ def support_to_scalar(logits, support_size):
     x = torch.sign(x) * (((torch.sqrt(1 + 4 * 0.001 * (torch.abs(x) + 1 + 0.001)) - 1) / (2 * 0.001))** 2 - 1)
     return x
 
-# def scalar_to_support(x, support_size):
-#     x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1) + 0.001 * x
-#     x = torch.clamp(x, -support_size, support_size)
-#     floor = x.floor()
-#     prob = x - floor
-#     logits = torch.zeros(x.shape[0], x.shape[1], 2 * support_size + 1).to(x.device)
-#     logits.scatter_(2, (floor + support_size).long().unsqueeze(-1), (1 - prob).unsqueeze(-1))
-#     indexes = floor + support_size + 1
-#     prob = prob.masked_fill_(2 * support_size < indexes, 0.0)
-#     indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)
-#     logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
-#     return logits
+# def support_to_scalar(logits, support_size):
+#     probabilities = torch.softmax(logits, dim=1)
+#     support = (torch.tensor([x for x in range(0, support_size + 1)])
+#                 .expand(probabilities.shape)
+#                 .float()
+#                 .to(device=probabilities.device))
+#     x = torch.sum(support * probabilities, dim=1, keepdim=True)
+#     x = torch.sign(x) * (((torch.sqrt(1 + 4 * 0.001 * (torch.abs(x) + 1 + 0.001)) - 1) / (2 * 0.001))** 2 - 1)
+#     return x
+
+# def support_to_scalar(logits):
+#     x = logits
+#     return x
 
 def scalar_to_support(x, support_size):
     x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1) + 0.001 * x
-    x = torch.clamp(x, 0, support_size)
+    x = torch.clamp(x, -support_size, support_size)
     floor = x.floor()
     prob = x - floor
-    logits = torch.zeros(x.shape[0], x.shape[1], support_size).to(x.device)
-    logits.scatter_(2, (floor).long().unsqueeze(-1), (1 - prob).unsqueeze(-1))
-    indexes = floor + 1
-    prob = prob.masked_fill_(support_size < indexes, 0.0)
-    indexes = indexes.masked_fill_(support_size < indexes, 0.0)
+    logits = torch.zeros(x.shape[0], x.shape[1], 2 * support_size + 1).to(x.device)
+    logits.scatter_(2, (floor + support_size).long().unsqueeze(-1), (1 - prob).unsqueeze(-1))
+    indexes = floor + support_size + 1
+    prob = prob.masked_fill_(2 * support_size < indexes, 0.0)
+    indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)
     logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
     return logits
+
+# def scalar_to_support(x, support_size):
+#     x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1) + 0.001 * x
+#     x = torch.clamp(x, 0, support_size)
+#     floor = x.floor()
+#     prob = x - floor
+#     logits = torch.zeros(x.shape[0], x.shape[1], support_size + 1).to(x.device)
+#     logits.scatter_(2, (floor).long().unsqueeze(-1), (1 - prob).unsqueeze(-1))
+#     indexes = floor + 1
+#     prob = prob.masked_fill_(support_size < indexes, 0.0)
+#     indexes = indexes.masked_fill_(support_size < indexes, 0.0)
+#     logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
+#     return logits
+
+# def scalar_to_support(x):
+#     logits = x
+#     return logits

@@ -50,6 +50,10 @@ class Trainer:
 
         target_value = networks.scalar_to_support(target_value, self.config.support_size_value)
         target_reward = networks.scalar_to_support(target_reward, self.config.support_size_reward)
+        
+#         target_value = networks.scalar_to_support(target_value)
+#         target_reward = target_reward
+        
         # target_value: batch, num_unroll_steps+1, 2*support_size+1
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
 
@@ -94,9 +98,22 @@ class Trainer:
             value_loss += current_value_loss
             reward_loss += current_reward_loss
             policy_loss += current_policy_loss
+            
 
         value_loss *= self.config.value_loss_weight
+        reward_loss *= self.config.reward_loss_weight
+        policy_loss *= self.config.policy_loss_weight
         loss = (value_loss + reward_loss + policy_loss).mean()
+        
+#         print("value")
+#         print(value_loss.mean())
+#         print(value_loss)
+#         print("reward")
+#         print(reward_loss.mean())
+#         print(reward_loss)
+#         print("policy")
+#         print(policy_loss.mean())
+#         print(policy_loss)
 
         loss.register_hook(lambda grad: grad / self.config.num_unroll_steps)
 
@@ -120,5 +137,8 @@ class Trainer:
         # Cross-entropy loss function
         value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)
         reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1)
+#         value_loss = ((value - target_value)**2)
+#         reward_loss = ((reward - target_reward)**2)
         policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1)
+        
         return value_loss, reward_loss, policy_loss
