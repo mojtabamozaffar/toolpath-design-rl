@@ -19,45 +19,47 @@ from networks import MuZeroResidualNetwork
 
 class MuZeroConfig(object):
     def __init__(self):
-        self.description = 'debug'
+        self.description = '4_32_channel'
         self.observation_shape = (1, 32, 32)
         self.action_space_size = 8
         self.max_moves = 400
         self.support_size_value = 20
-        self.support_size_reward = 2
-        self.num_simulations = 2
+        self.support_size_reward = 1
+        self.num_simulations = 50
         self.discount = 0.997
-        self.temperature_threshold = 300
+        self.temperature_threshold = 400
         self.root_dirichlet_alpha = 0.25
         self.root_exploration_fraction = 0.25
         self.pb_c_base = 500
         self.pb_c_init = 1.25
-        self.blocks = 2
-        self.channels = 8 
-        self.reduced_channels = 8 
-        self.resnet_fc_reward_layers = []
-        self.resnet_fc_value_layers = []
-        self.resnet_fc_policy_layers = []  
+        self.blocks = 4
+        self.channels = 32
+        self.reduced_channels = 32
+        self.resnet_fc_reward_layers = [16]
+        self.resnet_fc_value_layers = [16]
+        self.resnet_fc_policy_layers = [16]  
         self.value_loss_weight = 0.25
-        self.n_training_loop = 100
+        self.reward_loss_weight = 1.0
+        self.policy_loss_weight = 1.0
+        self.n_training_loop = 200
         self.n_episodes = 20
         self.n_epochs = 400
         self.eval_episodes = 10
-        self.window_size = 1000
+        self.window_size = 10000
         self.batch_size = 512
         self.num_unroll_steps = 10
         self.td_steps = 50
         self.momentum = 0.9
-        self.lr_init = 0.005
+        self.lr_init = 0.001
         self.lr_decay_rate = 1.0
         self.lr_decay_steps = 1000
         self.logdir='results/{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"),self.description)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.weight_decay = 1e-4
-        self.num_cpus = 10
+        self.num_cpus = 20
         self.visit_softmax_temperature_fn = lambda x: 1.0
 
-os.environ["CUDA_VISIBLE_DEVICES"]="2"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 random.seed(0)
 
 config = MuZeroConfig()    
@@ -129,5 +131,3 @@ for loop in range(config.n_training_loop+1):
                             config.n_training_loop,
                             replay_buffer.get_self_play_count(),
                             infos["total_loss"]))
-
-ray.shutdown()
