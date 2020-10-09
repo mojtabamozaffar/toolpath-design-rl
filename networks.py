@@ -162,7 +162,7 @@ class MuZeroResidualNetwork(torch.nn.Module):
         )
 
         self.dynamics_network = DynamicNetwork(
-            (8, 8, 8),
+            (32, 4, 4),
             num_blocks,
             num_channels + 1,
             reduced_channels,
@@ -171,7 +171,7 @@ class MuZeroResidualNetwork(torch.nn.Module):
         )
 
         self.prediction_network = PredictionNetwork(
-            (8, 8, 8),
+            (32, 4, 4),
             action_space_size,
             num_blocks,
             num_channels,

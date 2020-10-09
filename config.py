@@ -1,0 +1,43 @@
+import datetime
+import torch
+
+description = 'baseline'
+observation_shape = (1, 16, 16)
+action_space_size = 8
+max_moves = 100
+support_size_value = 10
+support_size_reward = 1
+num_simulations = 50
+discount = 0.997
+temperature_threshold = 100
+root_dirichlet_alpha = 0.25
+root_exploration_fraction = 0.25
+pb_c_base = 500
+pb_c_init = 1.25
+blocks = 4
+channels = 32
+reduced_channels = 32
+resnet_fc_reward_layers = [16]
+resnet_fc_value_layers = [16]
+resnet_fc_policy_layers = [16]  
+value_loss_weight = 0.25
+reward_loss_weight = 1.0
+policy_loss_weight = 1.0
+n_training_loop = 100
+n_episodes = 20
+n_epochs = 200
+eval_episodes = 10
+window_size = 10000
+batch_size = 64
+num_unroll_steps = 10
+td_steps = 50
+momentum = 0.9
+lr_init = 0.001
+lr_decay_rate = 1.0
+lr_decay_steps = 1000
+logdir='results/{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"), description)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+weight_decay = 1e-4
+num_cpus = 10
+visit_softmax_temperature_fn = lambda x: 1.0
+use_ray = False

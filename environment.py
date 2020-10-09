@@ -288,11 +288,13 @@ def load_sections(img_path, sample_number):
     if not sample_number == None:
         img = np.asarray(imageio.imread(glob.glob(img_path+str(sample_number)+'.png')[0]))/255
         img = img.astype(np.uint8)
+        img = cv2.resize(img, dsize=(16,16))
         sections.append(img.reshape(img.shape+(1,)))
     else:
         for path in glob.glob(img_path+'*.png'):
             img = np.asarray(imageio.imread(path))/255
             img = img.astype(np.uint8)
+            img = cv2.resize(img, dsize=(16,16))
             sections.append(img.reshape(img.shape+(1,)))
         random.shuffle(sections)
     return sections

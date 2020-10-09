@@ -2,8 +2,8 @@ import numpy as np
 import torch
 import networks
 import ray
+import config as gconfig
 
-@ray.remote
 class Trainer:
     def __init__(self, initial_weights, shared_storage, config):
         self.config = config
@@ -23,13 +23,22 @@ class Trainer:
             self.update_lr()
             total_loss, value_loss, reward_loss, policy_loss = self.update_weights(batches[i])
 
-        self.shared_storage.set_weights.remote(self.model.get_weights())
-        self.shared_storage.set_infos.remote("training_step", self.training_step)
-        self.shared_storage.set_infos.remote("lr", self.optimizer.param_groups[0]["lr"])
-        self.shared_storage.set_infos.remote("total_loss", total_loss)
-        self.shared_storage.set_infos.remote("value_loss", value_loss)
-        self.shared_storage.set_infos.remote("reward_loss", reward_loss)
-        self.shared_storage.set_infos.remote("policy_loss", policy_loss)
+        if gconfig.use_ray:
+            self.shared_storage.set_weights.remote(self.model.get_weights())
+            self.shared_storage.set_infos.remote("training_step", self.training_step)
+            self.shared_storage.set_infos.remote("lr", self.optimizer.param_groups[0]["lr"])
+            self.shared_storage.set_infos.remote("total_loss", total_loss)
+            self.shared_storage.set_infos.remote("value_loss", value_loss)
+            self.shared_storage.set_infos.remote("reward_loss", reward_loss)
+            self.shared_storage.set_infos.remote("policy_loss", policy_loss)
+        else:
+            self.shared_storage.set_weights(self.model.get_weights())
+            self.shared_storage.set_infos("training_step", self.training_step)
+            self.shared_storage.set_infos("lr", self.optimizer.param_groups[0]["lr"])
+            self.shared_storage.set_infos("total_loss", total_loss)
+            self.shared_storage.set_infos("value_loss", value_loss)
+            self.shared_storage.set_infos("reward_loss", reward_loss)
+            self.shared_storage.set_infos("policy_loss", policy_loss)
 
     def update_weights(self, batch):
 
@@ -104,16 +113,6 @@ class Trainer:
         reward_loss *= self.config.reward_loss_weight
         policy_loss *= self.config.policy_loss_weight
         loss = (value_loss + reward_loss + policy_loss).mean()
-        
-#         print("value")
-#         print(value_loss.mean())
-#         print(value_loss)
-#         print("reward")
-#         print(reward_loss.mean())
-#         print(reward_loss)
-#         print("policy")
-#         print(policy_loss.mean())
-#         print(policy_loss)
 
         loss.register_hook(lambda grad: grad / self.config.num_unroll_steps)
 
@@ -142,3 +141,6 @@ class Trainer:
         policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1)
         
         return value_loss, reward_loss, policy_loss
+    
+if gconfig.use_ray:
+    Trainer = ray.remote(Trainer)

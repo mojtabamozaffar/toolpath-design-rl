@@ -4,9 +4,8 @@ import math
 import ray
 import copy
 import networks
-
-
-@ray.remote        
+import config as gconfig
+    
 def play_one_game(model, env_func, config, temperature, save=False, filename = ''):
     game_history = GameHistory()
     game = env_func(max_steps = config.max_moves, window_size = config.observation_shape[1])
@@ -205,3 +204,6 @@ class MinMaxStats:
         if self.maximum > self.minimum:
             return (value - self.minimum) / (self.maximum - self.minimum)
         return value
+
+if gconfig.use_ray:
+    play_one_game = ray.remote(play_one_game)
