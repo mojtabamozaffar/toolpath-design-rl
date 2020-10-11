@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import ray
-import config as gconfig
+import global_config
 
 class SharedStorage:
     def __init__(self, config, weights):
@@ -29,5 +29,5 @@ class SharedStorage:
     def set_infos(self, key, value):
         self.infos[key] = value
         
-if gconfig.use_ray:
+if global_config.use_ray:
     SharedStorage = ray.remote(SharedStorage)

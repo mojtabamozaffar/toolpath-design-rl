@@ -1,7 +1,6 @@
-import datetime
 import torch
 
-description = 'baseline'
+description = 'baseline_epoch_400'
 observation_shape = (1, 16, 16)
 action_space_size = 8
 max_moves = 100
@@ -25,7 +24,7 @@ reward_loss_weight = 1.0
 policy_loss_weight = 1.0
 n_training_loop = 100
 n_episodes = 20
-n_epochs = 200
+n_epochs = 400
 eval_episodes = 10
 window_size = 10000
 batch_size = 64
@@ -35,9 +34,9 @@ momentum = 0.9
 lr_init = 0.001
 lr_decay_rate = 1.0
 lr_decay_steps = 1000
-logdir='results/{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"), description)
+logdir='results/{}'.format(description)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 weight_decay = 1e-4
-num_cpus = 10
+num_cpus = 8
 visit_softmax_temperature_fn = lambda x: 1.0
-use_ray = False
+use_ray = True

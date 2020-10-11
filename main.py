@@ -10,7 +10,7 @@ from functools import partial
 import random
 import copy
 
-import config
+import global_config as config
 from environment import create_am_env, create_am_env_test
 from shared_storage import SharedStorage
 from replay_buffer import ReplayBuffer, get_batch

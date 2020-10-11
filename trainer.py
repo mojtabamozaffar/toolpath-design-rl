@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import networks
 import ray
-import config as gconfig
+import global_config
 
 class Trainer:
     def __init__(self, initial_weights, shared_storage, config):
@@ -23,7 +23,7 @@ class Trainer:
             self.update_lr()
             total_loss, value_loss, reward_loss, policy_loss = self.update_weights(batches[i])
 
-        if gconfig.use_ray:
+        if global_config.use_ray:
             self.shared_storage.set_weights.remote(self.model.get_weights())
             self.shared_storage.set_infos.remote("training_step", self.training_step)
             self.shared_storage.set_infos.remote("lr", self.optimizer.param_groups[0]["lr"])
@@ -142,5 +142,5 @@ class Trainer:
         
         return value_loss, reward_loss, policy_loss
     
-if gconfig.use_ray:
+if global_config.use_ray:
     Trainer = ray.remote(Trainer)

@@ -1,6 +1,6 @@
 import numpy as np
 import ray
-import config as gcofig
+import global_config
 
 class ReplayBuffer:
     def __init__(self, config):
@@ -103,5 +103,5 @@ def make_target(game_history, state_index, config):
 
     return target_values, target_rewards, target_policies, actions
 
-if gcofig.use_ray:
+if global_config.use_ray:
     get_batch = ray.remote(get_batch)
