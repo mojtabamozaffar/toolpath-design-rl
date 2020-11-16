@@ -62,8 +62,7 @@ class MCTS:
         root = Node(0)
         observation = (torch.tensor(observation).float().unsqueeze(0).to(next(model.parameters()).device))
         _, reward, policy_logits, hidden_state = model.initial_inference(observation)
-        reward = networks.support_to_scalar(reward, self.config.support_size_reward).item()
-#         reward = reward.item()
+        reward = reward.item()
         root.expand(legal_actions, reward, policy_logits, hidden_state)
         if add_exploration_noise:
             root.add_exploration_noise(
@@ -86,10 +85,8 @@ class MCTS:
                 parent.hidden_state,
                 torch.tensor([[action]]).to(parent.hidden_state.device),
             )
-            value = networks.support_to_scalar(value, self.config.support_size_value).item()
-            reward = networks.support_to_scalar(reward, self.config.support_size_reward).item()
-#             value = networks.support_to_scalar(value).item()
-#             reward = reward.item()
+            value = networks.support_to_scalar(value).item()
+            reward = reward.item()
             node.expand(
                 [i for i in range(self.config.action_space_size)],
                 reward,

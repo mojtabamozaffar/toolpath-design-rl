@@ -3,6 +3,7 @@ import torch
 import networks
 import ray
 import global_config
+from adabelief_pytorch import AdaBelief
 
 class Trainer:
     def __init__(self, initial_weights, shared_storage, config):
@@ -15,12 +16,18 @@ class Trainer:
         self.model.to(torch.device(config.device))
         self.model.train()
         
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.lr_init,
-            weight_decay=self.config.weight_decay)
+        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.lr_init,
+        #     weight_decay=self.config.weight_decay)
+        
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.config.lr_init,
+            weight_decay=self.config.weight_decay, momentum = 0.9)
+        
+        # self.optimizer = AdaBelief(self.model.parameters(), lr=self.config.lr_init, eps=1e-10, rectify=True,
+        #                            weight_decay=self.config.weight_decay)
 
     def train(self, batches):
         for i in range(self.config.n_epochs):
-            self.update_lr()
+            # self.update_lr()
             total_loss, value_loss, reward_loss, policy_loss = self.update_weights(batches[i])
 
         if global_config.use_ray:
@@ -57,11 +64,9 @@ class Trainer:
         # target_reward: batch, num_unroll_steps+1
         # target_policy: batch, num_unroll_steps+1, len(action_space)
 
-        target_value = networks.scalar_to_support(target_value, self.config.support_size_value)
-        target_reward = networks.scalar_to_support(target_reward, self.config.support_size_reward)
         
-#         target_value = networks.scalar_to_support(target_value)
-#         target_reward = target_reward
+        target_value = networks.scalar_to_support(target_value)
+        target_reward = target_reward
         
         # target_value: batch, num_unroll_steps+1, 2*support_size+1
         # target_reward: batch, num_unroll_steps+1, 2*support_size+1
@@ -108,11 +113,7 @@ class Trainer:
             reward_loss += current_reward_loss
             policy_loss += current_policy_loss
             
-
-        value_loss *= self.config.value_loss_weight
-        reward_loss *= self.config.reward_loss_weight
-        policy_loss *= self.config.policy_loss_weight
-        loss = (value_loss + reward_loss + policy_loss).mean()
+        loss = (value_loss * self.config.value_loss_weight + reward_loss * self.config.reward_loss_weight + policy_loss * self.config.policy_loss_weight).mean()
 
         loss.register_hook(lambda grad: grad / self.config.num_unroll_steps)
 
@@ -134,10 +135,8 @@ class Trainer:
     @staticmethod
     def loss_function(value, reward, policy_logits, target_value, target_reward, target_policy):
         # Cross-entropy loss function
-        value_loss = (-target_value * torch.nn.LogSoftmax(dim=1)(value)).sum(1)
-        reward_loss = (-target_reward * torch.nn.LogSoftmax(dim=1)(reward)).sum(1)
-#         value_loss = ((value - target_value)**2)
-#         reward_loss = ((reward - target_reward)**2)
+        value_loss = ((value - target_value)**2)
+        reward_loss = ((reward - target_reward)**2)
         policy_loss = (-target_policy * torch.nn.LogSoftmax(dim=1)(policy_logits)).sum(1)
         
         return value_loss, reward_loss, policy_loss
