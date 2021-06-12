@@ -1,0 +1,12 @@
+numpy
+pandas
+torch
+ray
+tensorboard
+psutil
+matplotlib
+imageio
+opencv-python
+sklearn
+gym
+atari
