@@ -21,9 +21,10 @@ pip install -r requirements.txt
 ```
 
 ### Usage
-
+```
 python main.py
+```
 
 ## License
 
-This project is released under the [MIT License](https://github.com/mojtabamozaffar/toolpath-design-rl/blob/main/LICENSE).
+This project is released under the [MIT License](https://github.com/mojtabamozaffar/toolpath-design-rl/blob/master/LICENSE).
